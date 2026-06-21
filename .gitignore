@@ -15,6 +15,9 @@ venv/
 # Downloaded daily archives, temp files, and derived per-flight flight data
 /data/
 
+# Static export of your flight tracks (regenerate with scripts/export_static.py)
+/frontend/data/flights.json
+
 # Logs / temp
 *.log
 *.tmp

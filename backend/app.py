@@ -20,8 +20,7 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from .pipeline import runner
-from .pipeline.airports import get_airport
+from .pipeline import collect, runner
 
 ROOT = Path(__file__).resolve().parent.parent
 LOGS_DIR = ROOT / "flighty-logs"
@@ -63,41 +62,8 @@ async def resume() -> dict:
 
 @app.get("/api/flights")
 async def flights() -> dict:
-    """Aggregate every cached per-flight GeoJSON into one payload for the Visualize view.
-
-    Reads the cache live (no on-disk combined file). Resolves the airport coords for
-    every referenced IATA and computes per-route counts (for frequency-based opacity).
-    """
-    features: list[dict] = []
-    for path in sorted((CACHE_DIR / "flights").glob("*.geojson")):
-        try:
-            features.append(json.loads(path.read_text(encoding="utf-8")))
-        except (ValueError, OSError):
-            continue
-
-    airports: dict[str, dict] = {}
-    route_counts: dict[str, int] = {}
-    for feat in features:
-        props = feat.get("properties", {})
-        dep, arr = props.get("from"), props.get("diverted_to") or props.get("to")
-        for code in (props.get("from"), props.get("to"), props.get("diverted_to")):
-            if code and code not in airports:
-                try:
-                    a = get_airport(code)
-                    airports[code] = {"lat": a.lat, "lon": a.lon, "name": a.name}
-                except KeyError:
-                    pass
-        if dep and arr:
-            key = "|".join(sorted([dep, arr]))
-            route_counts[key] = route_counts.get(key, 0) + 1
-
-    route_max = max(route_counts.values()) if route_counts else 1
-    return {
-        "flights": features,
-        "airports": airports,
-        "routes": route_counts,
-        "route_max": route_max,
-    }
+    """Aggregate every cached per-flight GeoJSON into the Visualize payload (live)."""
+    return collect.build_flights_payload(CACHE_DIR)
 
 
 @app.get("/api/fetch-latest")

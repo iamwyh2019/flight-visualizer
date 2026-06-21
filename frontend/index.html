@@ -104,6 +104,16 @@
     });
     // Deep-link: open directly on a view via #visualize.
     if (location.hash === "#visualize") showView("visualize");
+
+    // Static deploy (no backend): hide the Fetch tab and open the map.
+    fetch("/api/flights", { method: "HEAD" })
+      .then((r) => { if (!r.ok) throw new Error("no backend"); })
+      .catch(() => {
+        const ft = document.querySelector('.tab[data-view="fetch"]');
+        if (ft) ft.classList.add("hidden");
+        document.querySelector(".brand .tag").textContent = "flight map";
+        showView("visualize");
+      });
   </script>
 </body>
 </html>

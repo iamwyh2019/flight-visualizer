@@ -184,8 +184,12 @@ const Visualize = (function () {
     if (!wired) { wireControls(); wired = true; }
     if (!loaded) {
       $("flight-list").innerHTML = '<div class="fl-row"><span class="muted">Loading…</span></div>';
+      // Live backend if present; otherwise the static export (no-backend deploy).
+      const loadFlights = fetch("/api/flights")
+        .then((r) => { if (!r.ok) throw new Error("no api"); return r.json(); })
+        .catch(() => fetch("data/flights.json").then((r) => r.json()));
       Promise.all([
-        fetch("/api/flights").then((r) => r.json()),
+        loadFlights,
         fetch("data/airlines.json").then((r) => r.json()).catch(() => ({})),
       ])
         .then(([d, al]) => {
