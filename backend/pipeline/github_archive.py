@@ -88,7 +88,12 @@ class _MultiPartReader:
 
 
 def _tar_assets(release: dict) -> list[dict]:
-    return [a for a in release.get("assets", []) if ".tar." in a["name"]]
+    # Matches both split parts (".tar.aa"/".tar.ab", 2024+) and a single ".tar"
+    # asset (2023 archives). Sorted so split parts reassemble in order.
+    return sorted(
+        (a for a in release.get("assets", []) if ".tar" in a["name"]),
+        key=lambda a: a["name"],
+    )
 
 
 def _resolve_release(client: httpx.Client, repo: str, d: date, emit: EmitFn) -> dict:
@@ -139,10 +144,7 @@ def fetch_traces(
 
     with httpx.Client(timeout=60.0, follow_redirects=True) as client:
         release = _resolve_release(client, repo, d, emit)
-        assets = sorted(
-            (a for a in release.get("assets", []) if ".tar." in a["name"]),
-            key=lambda a: a["name"],
-        )
+        assets = _tar_assets(release)
         if not assets:
             raise FileNotFoundError(f"Release {release.get('tag_name')} has no tar assets")
 
