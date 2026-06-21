@@ -1,0 +1,42 @@
+{
+"AAL": {
+"name": "American Airlines",
+"iata": "AA",
+"logo": "data/airline-logos/AAL.png"
+},
+"ASA": {
+"name": "Alaska Airlines",
+"iata": "AS",
+"logo": "data/airline-logos/ASA.png"
+},
+"BAW": {
+"name": "British Airways",
+"iata": "BA",
+"logo": "data/airline-logos/BAW.png"
+},
+"CPA": {
+"name": "Cathay Pacific",
+"iata": "CX",
+"logo": "data/airline-logos/CPA.png"
+},
+"CSN": {
+"name": "China Southern",
+"iata": "CZ",
+"logo": "data/airline-logos/CSN.png"
+},
+"EVA": {
+"name": "EVA Air",
+"iata": "BR",
+"logo": "data/airline-logos/EVA.png"
+},
+"EZY": {
+"name": "easyJet",
+"iata": "U2",
+"logo": "data/airline-logos/EZY.png"
+},
+"UAL": {
+"name": "United Airlines",
+"iata": "UA",
+"logo": "data/airline-logos/UAL.png"
+}
+}

@@ -273,7 +273,9 @@ const FlightMap = (function () {
     return geom.type === "LineString" ? geom.coordinates : geom.coordinates.flat();
   }
   function tooltipText(p) {
-    return `${p.date} · ${p.flight} · ${p.from}→${p.diverted_to || p.to}`;
+    const logo = p._logo ? `<img class="tip-logo" src="${p._logo}">` : "";
+    const al = p._airline || p.airline || "";
+    return `${logo}<b>${p.flight}</b> · ${al}<br>${p.date} · ${p.from}→${p.diverted_to || p.to}`;
   }
   function altColor(altFt) {
     const t = Math.max(0, Math.min(1, (altFt || 0) / 40000));

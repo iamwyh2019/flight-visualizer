@@ -9,6 +9,10 @@ const Visualize = (function () {
   let speed = 1;
   let fAirline = "";
   let fYear = "";
+  let airlines = {}; // ICAO -> {name, iata, logo}
+
+  const airlineName = (c) => (airlines[c] && airlines[c].name) || c;
+  const airlineLogo = (c) => (airlines[c] && airlines[c].logo) || "";
   let replaying = false;
   let paused = false;
   let replayCtl = null;
@@ -23,6 +27,8 @@ const Visualize = (function () {
   function buildItems() {
     items = data.flights.map((f) => {
       const p = f.properties;
+      p._airline = airlineName(p.airline); // enrich for the map tooltip
+      p._logo = airlineLogo(p.airline);
       const key = [p.from, p.diverted_to || p.to].sort().join("|");
       return {
         id: [p.date, p.flight, p.tail_number].join("_"),
@@ -43,10 +49,11 @@ const Visualize = (function () {
   }
 
   function populateFilters() {
-    const airlines = [...new Set(items.map((it) => it.props.airline))].filter(Boolean).sort();
+    const airlinesList = [...new Set(items.map((it) => it.props.airline))].filter(Boolean).sort();
     const years = [...new Set(items.map((it) => it.year))].sort((a, b) => b - a);
     $("filter-airline").innerHTML =
-      '<option value="">All airlines</option>' + airlines.map((a) => `<option value="${a}">${a}</option>`).join("");
+      '<option value="">All airlines</option>' +
+      airlinesList.map((a) => `<option value="${a}">${airlineName(a)}</option>`).join("");
     $("filter-year").innerHTML =
       '<option value="">All years</option>' + years.map((y) => `<option value="${y}">${y}</option>`).join("");
   }
@@ -56,7 +63,6 @@ const Visualize = (function () {
     if (selectedId && !vis.some((it) => it.id === selectedId)) {
       selectedId = null;
       stopReplay();
-      $("replay-btn").disabled = true;
     }
     renderList();
     render();
@@ -70,7 +76,12 @@ const Visualize = (function () {
       const row = document.createElement("div");
       row.className = "fl-row";
       row.dataset.id = it.id;
+      const logo = airlineLogo(it.props.airline);
+      const logoHtml = logo
+        ? `<img class="fl-logo" src="${logo}" alt="" title="${airlineName(it.props.airline)}">`
+        : `<span class="fl-logo ph"></span>`;
       row.innerHTML =
+        logoHtml +
         `<span class="fl-date">${it.props.date}</span>` +
         `<span class="fl-num">${it.props.flight}</span>` +
         `<span class="fl-route">${it.props.from}→${it.props.diverted_to || it.props.to}</span>`;
@@ -93,7 +104,7 @@ const Visualize = (function () {
       const row = document.querySelector(`.fl-row[data-id="${id}"]`);
       if (row) row.scrollIntoView({ block: "nearest" });
     }
-    $("replay-btn").disabled = false;
+    replayIdleLabel();
   }
 
   function render() {
@@ -103,17 +114,28 @@ const Visualize = (function () {
       onSelect: (id) => select(id, true),
     });
     if (selectedId) FlightMap.selectFlight(selectedId);
+    replayIdleLabel();
   }
 
   function setReplayBtn(label) {
     $("replay-btn").innerHTML = label;
+  }
+  // Idle button state: prompt to select, or offer replay once a flight is chosen.
+  function replayIdleLabel() {
+    if (selectedId) {
+      $("replay-btn").disabled = false;
+      setReplayBtn("▶ Replay selected");
+    } else {
+      $("replay-btn").disabled = true;
+      setReplayBtn("Select a flight to replay");
+    }
   }
   function stopReplay() {
     FlightMap.stopReplay();
     replaying = false;
     paused = false;
     replayCtl = null;
-    setReplayBtn("▶ Replay selected");
+    replayIdleLabel();
   }
   function onReplayClick() {
     if (!selectedId) return;
@@ -164,10 +186,13 @@ const Visualize = (function () {
     if (!wired) { wireControls(); wired = true; }
     if (!loaded) {
       $("flight-list").innerHTML = '<div class="fl-row"><span class="muted">Loading…</span></div>';
-      fetch("/api/flights")
-        .then((r) => r.json())
-        .then((d) => {
+      Promise.all([
+        fetch("/api/flights").then((r) => r.json()),
+        fetch("data/airlines.json").then((r) => r.json()).catch(() => ({})),
+      ])
+        .then(([d, al]) => {
           data = d;
+          airlines = al || {};
           loaded = true;
           buildItems();
           populateFilters();

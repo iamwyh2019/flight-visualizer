@@ -238,9 +238,19 @@ html, body {
 .fl-row:last-child { border-bottom: none; }
 .fl-row:hover { background: #14233c; }
 .fl-row.selected { background: rgba(56,189,248,0.16); box-shadow: inset 2px 0 0 var(--accent); }
-.fl-row .fl-date { color: var(--muted); font-size: 11.5px; min-width: 62px; }
+.fl-row .fl-logo { width: 16px; height: 16px; object-fit: contain; border-radius: 3px; background: #fff; padding: 1px; flex: none; }
+.fl-row .fl-logo.ph { background: transparent; }
+.fl-row .fl-date { color: var(--muted); font-size: 11.5px; min-width: 58px; }
 .fl-row .fl-num { color: var(--text); font-weight: 600; }
 .fl-row .fl-route { color: var(--accent); margin-left: auto; }
+
+/* Map hover tooltip (airline logo + name + flight info) */
+.leaflet-tooltip.flight-tip {
+  background: rgba(10, 22, 44, 0.95); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; font-size: 11.5px; padding: 5px 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+.leaflet-tooltip.flight-tip::before { display: none; }
+.flight-tip .tip-logo { width: 14px; height: 14px; object-fit: contain; background: #fff; border-radius: 2px; vertical-align: -3px; margin-right: 5px; }
 
 /* Replay plane icon */
 .plane-icon { color: #fff; filter: drop-shadow(0 0 4px rgba(56,189,248,0.9)); transition: none; }
