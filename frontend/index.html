@@ -38,16 +38,30 @@
         <pre id="log" class="log"></pre>
       </div>
 
-      <!-- Visualize view (stub for a later stage) -->
+      <!-- Visualize view -->
       <div class="view hidden" id="view-visualize">
-        <div class="card">
-          <strong>Visualization view</strong>
-          <p class="hint">
-            This view will render the combined <code>flights.geojson</code> of all
-            your flights. It shares the same map component as Fetch. (Coming in a
-            later stage.)
-          </p>
+        <div class="seg" id="color-toggle">
+          <button class="seg-btn active" data-scheme="route">Route</button>
+          <button class="seg-btn" data-scheme="altitude">Altitude</button>
         </div>
+
+        <div id="alt-legend" class="alt-legend hidden">
+          <span>0 ft</span>
+          <div class="alt-gradient"></div>
+          <span>40k+</span>
+        </div>
+
+        <div class="replay-bar">
+          <button id="replay-btn" class="primary small" disabled>▶ Replay selected</button>
+          <div class="seg speed" id="speed-toggle">
+            <button class="seg-btn active" data-speed="1">1×</button>
+            <button class="seg-btn" data-speed="2">2×</button>
+            <button class="seg-btn" data-speed="4">4×</button>
+          </div>
+        </div>
+
+        <h3 class="log-title">Flights <span id="flight-count" class="muted"></span></h3>
+        <div id="flight-list" class="flight-list"></div>
       </div>
     </section>
 
@@ -67,16 +81,24 @@
   <script src="visualize.js"></script>
   <script>
     // Simple tab switching; the map is shared and just resized on show.
+    function showView(view) {
+      document.querySelectorAll(".tab").forEach((b) =>
+        b.classList.toggle("active", b.dataset.view === view)
+      );
+      document.getElementById("view-fetch").classList.toggle("hidden", view !== "fetch");
+      document.getElementById("view-visualize").classList.toggle("hidden", view !== "visualize");
+      if (view === "visualize") Visualize.activate();
+      else Visualize.deactivate();
+      FlightMap.refresh();
+    }
     document.querySelectorAll(".tab").forEach((btn) => {
       btn.addEventListener("click", () => {
-        document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        const view = btn.dataset.view;
-        document.getElementById("view-fetch").classList.toggle("hidden", view !== "fetch");
-        document.getElementById("view-visualize").classList.toggle("hidden", view !== "visualize");
-        FlightMap.refresh();
+        location.hash = btn.dataset.view === "visualize" ? "#visualize" : "";
+        showView(btn.dataset.view);
       });
     });
+    // Deep-link: open directly on a view via #visualize.
+    if (location.hash === "#visualize") showView("visualize");
   </script>
 </body>
 </html>

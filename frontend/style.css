@@ -195,6 +195,48 @@ html, body {
 }
 
 .hidden { display: none !important; }
+.muted { color: var(--muted); font-weight: 400; }
+
+/* Segmented toggles (color scheme, speed) */
+.seg { display: inline-flex; background: #0b1322; border: 1px solid var(--border); border-radius: 9px; padding: 3px; gap: 3px; }
+#color-toggle { display: flex; width: 100%; }
+#color-toggle .seg-btn { flex: 1; }
+.seg-btn {
+  background: transparent; color: var(--muted); border: none; border-radius: 6px;
+  padding: 7px 12px; font-size: 13px; cursor: pointer;
+}
+.seg-btn.active { background: var(--accent); color: #06283d; font-weight: 600; }
+
+.primary.small { font-size: 13px; padding: 9px 12px; flex: 1; }
+.primary.small:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.replay-bar { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
+.replay-bar .speed .seg-btn { padding: 7px 9px; font-size: 12px; }
+
+/* Altitude legend */
+.alt-legend { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; font-size: 11px; color: var(--muted); }
+.alt-gradient {
+  flex: 1; height: 10px; border-radius: 999px; border: 1px solid var(--border);
+  background: linear-gradient(to right,
+    hsl(0,90%,55%), hsl(48,90%,55%), hsl(96,90%,55%), hsl(144,90%,55%), hsl(192,90%,55%), hsl(240,90%,55%));
+}
+
+/* Flight list */
+.flight-list { overflow-y: auto; max-height: calc(100vh - 320px); border: 1px solid var(--border); border-radius: 8px; background: #0b1322; }
+.fl-row {
+  display: flex; gap: 8px; align-items: baseline; padding: 7px 10px;
+  border-bottom: 1px solid rgba(36,50,80,0.5); cursor: pointer; font-size: 12.5px;
+}
+.fl-row:last-child { border-bottom: none; }
+.fl-row:hover { background: #14233c; }
+.fl-row.selected { background: rgba(56,189,248,0.16); box-shadow: inset 2px 0 0 var(--accent); }
+.fl-row .fl-date { color: var(--muted); font-size: 11.5px; min-width: 62px; }
+.fl-row .fl-num { color: var(--text); font-weight: 600; }
+.fl-row .fl-route { color: var(--accent); margin-left: auto; }
+
+/* Replay plane icon */
+.plane-icon { color: #fff; filter: drop-shadow(0 0 4px rgba(56,189,248,0.9)); transition: none; }
+.plane-icon svg { display: block; }
 
 /* Airport nodes: glowing dots with a white core, matching the cyan art style. */
 .airport-node span {

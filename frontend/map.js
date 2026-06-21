@@ -4,12 +4,14 @@ const FlightMap = (function () {
   let trackLayer = null;
   let runwayLayer = null;
   let markerLayer = null;
+  let replayLayer = null;
 
   function init() {
     if (map) return map;
     // No tile basemap: a solid dark-blue canvas (set in CSS) with thin
     // state-boundary outlines only — minimal, no map detail.
-    map = L.map("map", { zoomControl: true, attributionControl: false })
+    // preferCanvas: render the many tracks/segments on canvas for performance.
+    map = L.map("map", { zoomControl: true, attributionControl: false, preferCanvas: true })
       .setView([39.5, -98.35], 4); // US center
 
     // Borders drawn underneath everything as a faint wireframe: world country
@@ -36,6 +38,7 @@ const FlightMap = (function () {
     trackLayer = L.layerGroup().addTo(map);
     runwayLayer = L.layerGroup().addTo(map);
     markerLayer = L.layerGroup().addTo(map);
+    replayLayer = L.layerGroup().addTo(map); // trail + plane, topmost
     loadRunways();
     loadDetail();
     return map;
@@ -45,6 +48,7 @@ const FlightMap = (function () {
     if (trackLayer) trackLayer.clearLayers();
     if (runwayLayer) runwayLayer.clearLayers();
     if (markerLayer) markerLayer.clearLayers();
+    if (replayLayer) replayLayer.clearLayers();
   }
 
   // Airports are drawn once each (deduped by IATA) as glowing nodes with a label,
@@ -225,11 +229,228 @@ const FlightMap = (function () {
     if (runBounds.isValid()) map.fitBounds(runBounds, { padding: [50, 50] });
   }
 
+  // ---------------------------------------------------------------------------
+  // Visualize view: all cached flights, hover tooltips, selection, color schemes,
+  // and a plane-icon replay. Separate from the live Fetch rendering above.
+  // ---------------------------------------------------------------------------
+  let vizItems = []; // [{id, feature, count}]
+  let vizAirports = {};
+  let flightLayers = {}; // id -> {visible:[layers], feature, count, selected}
+  let colorScheme = "route";
+  let selectedId = null;
+  let onSelectCb = null;
+  let replay = null;
+
+  function segmentsOf(geom) {
+    return geom.type === "LineString" ? [geom.coordinates] : geom.coordinates;
+  }
+  function flatCoords(geom) {
+    return geom.type === "LineString" ? geom.coordinates : geom.coordinates.flat();
+  }
+  function tooltipText(p) {
+    return `${p.date} · ${p.flight} · ${p.from}→${p.diverted_to || p.to}`;
+  }
+  function altColor(altFt) {
+    const t = Math.max(0, Math.min(1, (altFt || 0) / 40000));
+    return `hsl(${Math.round(240 * t)}, 90%, 55%)`; // 0=red (low) -> 240=blue (high)
+  }
+  function setBase(ly, w, o) { ly._bw = w; ly._bo = o; ly.setStyle({ weight: w, opacity: o }); }
+  function restore(ly) { ly.setStyle({ weight: ly._bw, opacity: ly._bo }); }
+  function emphasize(ly) { ly.setStyle({ weight: ly._bw + 2, opacity: 1 }); ly.bringToFront(); }
+
+  function hoverFlight(id, on) {
+    const fl = flightLayers[id];
+    if (!fl) return;
+    const hot = on || fl.selected;
+    fl.visible.forEach((ly) => (hot ? emphasize(ly) : restore(ly)));
+  }
+
+  function buildFlight(item) {
+    const grp = L.layerGroup();
+    const visible = [];
+    const tip = tooltipText(item.feature.properties);
+    const bind = (ly) => {
+      ly.bindTooltip(tip, { sticky: true, direction: "top", className: "flight-tip" });
+      ly.on("mouseover", () => hoverFlight(item.id, true));
+      ly.on("mouseout", () => hoverFlight(item.id, false));
+      ly.on("click", () => onSelectCb && onSelectCb(item.id));
+      visible.push(ly);
+    };
+    segmentsOf(item.feature.geometry).forEach((seg) => {
+      const ll = seg.map((c) => [c[1], c[0]]);
+      if (colorScheme === "altitude") {
+        for (let i = 0; i < seg.length - 1; i++) {
+          const alt = ((seg[i][2] || 0) + (seg[i + 1][2] || 0)) / 2;
+          const ly = L.polyline([ll[i], ll[i + 1]], { color: altColor(alt), interactive: true });
+          setBase(ly, 2.5, 0.95);
+          ly.addTo(grp);
+          bind(ly);
+        }
+      } else {
+        const op = routeOpacity(item.count);
+        L.polyline(ll, { color: TRACK_COLOR, weight: 7, opacity: 0.18 * op, interactive: false }).addTo(grp);
+        const core = L.polyline(ll, { color: TRACK_COLOR, interactive: true });
+        setBase(core, 2, op);
+        core.addTo(grp);
+        bind(core);
+      }
+    });
+    return { group: grp, visible };
+  }
+
+  function renderTracks() {
+    trackLayer.clearLayers();
+    flightLayers = {};
+    vizItems.forEach((item) => {
+      const { group, visible } = buildFlight(item);
+      group.addTo(trackLayer);
+      flightLayers[item.id] = { visible, feature: item.feature, count: item.count, selected: false };
+    });
+    if (selectedId && flightLayers[selectedId]) {
+      flightLayers[selectedId].selected = true;
+      flightLayers[selectedId].visible.forEach(emphasize);
+    }
+  }
+
+  /* Render all cached flights for the Visualize view. */
+  function showFlights(items, airports, opts) {
+    stopReplay();
+    beginRun(); // clears layers + bounds + airport dedupe
+    vizItems = items;
+    vizAirports = airports || {};
+    colorScheme = (opts && opts.colorBy) || "route";
+    onSelectCb = (opts && opts.onSelect) || null;
+    selectedId = null;
+
+    renderTracks();
+    Object.values(flightLayers).forEach((fl) =>
+      fl.visible.forEach((ly) => runBounds.extend(ly.getBounds()))
+    );
+    Object.entries(vizAirports).forEach(([iata, a]) => addAirport({ iata, lat: a.lat, lon: a.lon }));
+    if (runBounds.isValid()) map.fitBounds(runBounds, { padding: [50, 50] });
+  }
+
+  function setColorScheme(scheme) {
+    if (scheme === colorScheme) return;
+    colorScheme = scheme;
+    stopReplay();
+    renderTracks();
+  }
+
+  function selectFlight(id) {
+    if (selectedId && flightLayers[selectedId]) {
+      flightLayers[selectedId].selected = false;
+      flightLayers[selectedId].visible.forEach(restore);
+    }
+    selectedId = id;
+    const fl = flightLayers[id];
+    if (fl) {
+      fl.selected = true;
+      fl.visible.forEach(emphasize);
+    }
+  }
+
+  function bearing(a, b) {
+    // a, b = [lon, lat]
+    const toR = (d) => (d * Math.PI) / 180;
+    const f1 = toR(a[1]), f2 = toR(b[1]), dl = toR(b[0] - a[0]);
+    const y = Math.sin(dl) * Math.cos(f2);
+    const x = Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl);
+    return (((Math.atan2(y, x) * 180) / Math.PI) + 360) % 360;
+  }
+
+  function planeIconHtml() {
+    return (
+      '<svg width="22" height="22" viewBox="0 0 24 24">' +
+      '<path fill="currentColor" d="M12 2l1.6 7.2 7.4 3.6v1.8l-7.4-2.2L13 19l2.4 1.6v1.2L12 20.6 8.6 21.8v-1.2L11 19l-.6-4.8L3 16.4v-1.8l7.4-3.6z"/></svg>'
+    );
+  }
+  function planeIcon() {
+    return L.divIcon({ className: "plane-icon", iconSize: [22, 22], iconAnchor: [11, 11], html: planeIconHtml() });
+  }
+  function rotatePlane(marker, deg) {
+    const el = marker.getElement();
+    const svg = el && el.querySelector("svg");
+    if (svg) svg.style.transform = `rotate(${deg}deg)`;
+  }
+
+  function dimAll(on) {
+    Object.values(flightLayers).forEach((fl) =>
+      fl.visible.forEach((ly) => (on ? ly.setStyle({ opacity: 0.08 }) : (fl.selected ? emphasize : restore)(ly)))
+    );
+  }
+
+  /* Animate a plane flying along a flight's path with a growing trail. */
+  function replayFlight(feature, opts) {
+    stopReplay();
+    const pts = flatCoords(feature.geometry);
+    if (pts.length < 2) return null;
+    const ll = pts.map((c) => [c[1], c[0]]);
+    // Zoom to the flight so the plane is actually watchable.
+    const fb = L.latLngBounds(ll);
+    if (fb.isValid()) map.fitBounds(fb, { padding: [80, 80] });
+    const dist = [0];
+    for (let i = 1; i < ll.length; i++) dist.push(dist[i - 1] + map.distance(ll[i - 1], ll[i]));
+    const total = dist[dist.length - 1] || 1;
+
+    dimAll(true);
+    const trail = L.polyline([ll[0]], { color: "#ffffff", weight: 3, opacity: 0.95 }).addTo(replayLayer);
+    const plane = L.marker(ll[0], { icon: planeIcon(), interactive: false, keyboard: false }).addTo(replayLayer);
+    rotatePlane(plane, bearing(pts[0], pts[1]));
+
+    const BASE_MS = 9000;
+    let speed = (opts && opts.speed) || 1;
+    let elapsed = 0, last = null, paused = false, raf = null;
+
+    function frame(ts) {
+      if (last == null) last = ts;
+      if (!paused) elapsed += (ts - last) * speed;
+      last = ts;
+      const d = Math.min(total, (elapsed / BASE_MS) * total);
+      let i = 1;
+      while (i < dist.length && dist[i] < d) i++;
+      const i0 = i - 1, i1 = Math.min(i, ll.length - 1);
+      const seg = dist[i1] - dist[i0] || 1;
+      const f = Math.max(0, Math.min(1, (d - dist[i0]) / seg));
+      const lat = ll[i0][0] + (ll[i1][0] - ll[i0][0]) * f;
+      const lon = ll[i0][1] + (ll[i1][1] - ll[i0][1]) * f;
+      plane.setLatLng([lat, lon]);
+      rotatePlane(plane, bearing(pts[i0], pts[i1]));
+      trail.setLatLngs(ll.slice(0, i1).concat([[lat, lon]]));
+      if (opts && opts.onTick) opts.onTick(d / total);
+      if (d >= total) {
+        stopReplay();
+        if (opts && opts.onDone) opts.onDone();
+        return;
+      }
+      raf = requestAnimationFrame(frame);
+    }
+    raf = requestAnimationFrame(frame);
+
+    replay = {
+      pause() { paused = true; },
+      resume() { paused = false; last = null; },
+      isPaused() { return paused; },
+      setSpeed(s) { speed = s; },
+      _stop() { if (raf) cancelAnimationFrame(raf); },
+    };
+    return replay;
+  }
+
+  function stopReplay() {
+    if (replay) { replay._stop(); replay = null; }
+    if (replayLayer) replayLayer.clearLayers();
+    if (Object.keys(flightLayers).length) dimAll(false);
+  }
+
   function refresh() {
     if (map) setTimeout(() => map.invalidateSize(), 0);
   }
 
-  return { init, clear, beginRun, setRoutes, addFlights, refresh };
+  return {
+    init, clear, beginRun, setRoutes, addFlights, refresh,
+    showFlights, setColorScheme, selectFlight, replayFlight, stopReplay,
+  };
 })();
 
 document.addEventListener("DOMContentLoaded", FlightMap.init);
