@@ -27,6 +27,10 @@ EmitFn = Callable[..., None]
 _API = "https://api.github.com"
 
 
+# adsb.lol's open historical archive starts in 2023 (no 2022/earlier repos exist).
+MIN_ARCHIVE_YEAR = 2023
+
+
 class Cancelled(Exception):
     """Raised when a run is aborted (e.g. the web client disconnected)."""
 
@@ -135,6 +139,10 @@ def fetch_traces(
 
     Raises FileNotFoundError if the release for the date doesn't exist at all.
     """
+    if d.year < MIN_ARCHIVE_YEAR:
+        raise FileNotFoundError(
+            f"adsb.lol has no archive for {d.isoformat()} (open coverage starts {MIN_ARCHIVE_YEAR})"
+        )
     work_dir = Path(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
     repo = _repo_for_year(d.year)
