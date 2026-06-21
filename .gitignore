@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Personal Flighty export (contains PNR, seat, notes, etc.)
+/flighty-logs/
+
+# Downloaded daily archives, temp files, and derived per-flight flight data
+/data/
+
+# Logs / temp
+*.log
+*.tmp

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flight Visualizer — Data Fetcher</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">✈ Flight Visualizer <span class="tag">data fetcher</span></div>
+    <nav class="tabs">
+      <button class="tab active" data-view="fetch">Fetch</button>
+      <button class="tab" data-view="visualize">Visualize</button>
+    </nav>
+  </header>
+
+  <main class="layout">
+    <!-- Left: per-view control panel -->
+    <section class="panel">
+      <!-- Fetch view -->
+      <div class="view" id="view-fetch">
+        <button id="fetch-btn" class="primary">Fetch latest day</button>
+
+        <div id="flight-card" class="card hidden"></div>
+
+        <div id="progress-wrap" class="progress-wrap hidden">
+          <div class="progress-label"><span id="progress-text">Downloading…</span></div>
+          <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+        </div>
+
+        <h3 class="log-title">Live log</h3>
+        <pre id="log" class="log"></pre>
+      </div>
+
+      <!-- Visualize view (stub for a later stage) -->
+      <div class="view hidden" id="view-visualize">
+        <div class="card">
+          <strong>Visualization view</strong>
+          <p class="hint">
+            This view will render the combined <code>flights.geojson</code> of all
+            your flights. It shares the same map component as Fetch. (Coming in a
+            later stage.)
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: shared map, reused by both views -->
+    <section class="map-wrap">
+      <div id="map"></div>
+    </section>
+  </main>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+  <script src="map.js"></script>
+  <script src="fetch.js"></script>
+  <script src="visualize.js"></script>
+  <script>
+    // Simple tab switching; the map is shared and just resized on show.
+    document.querySelectorAll(".tab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        const view = btn.dataset.view;
+        document.getElementById("view-fetch").classList.toggle("hidden", view !== "fetch");
+        document.getElementById("view-visualize").classList.toggle("hidden", view !== "visualize");
+        FlightMap.refresh();
+      });
+    });
+  </script>
+</body>
+</html>

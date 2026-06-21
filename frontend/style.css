@@ -1,0 +1,137 @@
+:root {
+  --bg: #0f172a;
+  --panel: #111c30;
+  --card: #1a2740;
+  --border: #243250;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #38bdf8;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 56px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand { font-weight: 600; font-size: 16px; }
+.brand .tag {
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-left: 6px;
+}
+
+.tabs { display: flex; gap: 6px; }
+.tab {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.tab.active { color: var(--text); background: var(--card); border-color: var(--border); }
+
+.layout { display: flex; height: calc(100% - 56px); }
+
+.panel {
+  width: 380px;
+  min-width: 380px;
+  padding: 18px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.map-wrap { flex: 1; position: relative; }
+/* Solid dark-blue canvas; no tiles, so this fills the whole map. */
+#map { position: absolute; inset: 0; background: #061024; }
+.leaflet-container { background: #061024; }
+
+.primary {
+  width: 100%;
+  background: var(--accent);
+  color: #06283d;
+  font-weight: 600;
+  font-size: 15px;
+  border: none;
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+}
+.primary:disabled { opacity: 0.55; cursor: progress; }
+
+.hint { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 14px 0;
+}
+.card code { color: var(--accent); }
+
+.day-note { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; line-height: 1.45; }
+.flight-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 5px 0;
+  border-top: 1px solid var(--border);
+}
+.flight-row b { color: var(--text); }
+.flight-row .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+
+.progress-wrap { margin: 14px 0; }
+.progress-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.progress-bar { height: 10px; background: #0b1322; border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
+.progress-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.2s ease; }
+
+.log-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 18px 0 6px; }
+.log {
+  background: #0b1322;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  height: 280px;
+  overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  color: #cbd5e1;
+}
+
+.hidden { display: none !important; }
+
+/* Airport reference pins */
+.airport-pin span {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+}
