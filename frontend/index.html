@@ -109,8 +109,8 @@
     fetch("/api/flights", { method: "HEAD" })
       .then((r) => { if (!r.ok) throw new Error("no backend"); })
       .catch(() => {
-        const ft = document.querySelector('.tab[data-view="fetch"]');
-        if (ft) ft.classList.add("hidden");
+        // Static deploy: only the map exists, so hide the whole tab switcher.
+        document.querySelector(".tabs").classList.add("hidden");
         showView("visualize");
       });
   </script>
