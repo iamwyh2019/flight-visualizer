@@ -118,45 +118,71 @@ const Visualize = (function () {
     replayIdleLabel();
   }
 
-  function setReplayBtn(label) {
-    $("replay-btn").innerHTML = label;
-  }
-  // Idle button state: prompt to select, or offer replay once a flight is chosen.
+  // Idle state of the left "Replay" button.
   function replayIdleLabel() {
     if (selectedId) {
       $("replay-btn").disabled = false;
-      setReplayBtn("▶ Replay selected");
+      $("replay-btn").innerHTML = "▶ Replay selected";
     } else {
       $("replay-btn").disabled = true;
-      setReplayBtn("Select a flight to replay");
+      $("replay-btn").innerHTML = "Select a flight to replay";
     }
+  }
+
+  // --- bottom replay player ---
+  let t0 = 0, t1 = 0; // selected flight takeoff/landing (ms)
+  const pad = (n) => String(n).padStart(2, "0");
+  const fmtISO = (s) => (s && s.includes("T") ? s.split("T")[1].slice(0, 5) : "--:--");
+  const fmtMs = (ms) => { const d = new Date(ms); return pad(d.getHours()) + ":" + pad(d.getMinutes()); };
+
+  function updateProgress(frac) {
+    $("rp-fill").style.width = (frac * 100).toFixed(1) + "%";
+    $("rp-cur").textContent = t1 > t0 ? fmtMs(t0 + frac * (t1 - t0)) : fmtISO(null);
+  }
+  function onReplayEnd() { paused = true; $("rp-play").textContent = "▶"; }
+
+  function startReplay() {
+    if (!selectedId) return;
+    const fl = items.find((it) => it.id === selectedId);
+    if (!fl) return;
+    const p = fl.props;
+    t0 = p.takeoff ? Date.parse(p.takeoff) : 0;
+    t1 = p.landing ? Date.parse(p.landing) : 0;
+    $("rp-start").textContent = fmtISO(p.takeoff);
+    $("rp-end").textContent = fmtISO(p.landing);
+    $("rp-play").textContent = "⏸";
+    updateProgress(0);
+    $("replay-player").classList.remove("hidden");
+    replayCtl = FlightMap.replayFlight(fl.feature, { speed, onTick: updateProgress, onEnd: onReplayEnd });
+    if (!replayCtl) { $("replay-player").classList.add("hidden"); return; }
+    replaying = true;
+    paused = false;
+  }
+  function onReplayClick() { if (selectedId && !replaying) startReplay(); }
+
+  function togglePlay() {
+    if (!replayCtl) return;
+    paused = !paused;
+    if (paused) replayCtl.pause();
+    else replayCtl.resume();
+    $("rp-play").textContent = paused ? "▶" : "⏸";
   }
   function stopReplay() {
     FlightMap.stopReplay();
     replaying = false;
     paused = false;
     replayCtl = null;
+    $("replay-player").classList.add("hidden");
     replayIdleLabel();
   }
-  function onReplayClick() {
-    if (!selectedId) return;
-    if (!replaying) {
-      const fl = items.find((it) => it.id === selectedId);
-      if (!fl) return;
-      replayCtl = FlightMap.replayFlight(fl.feature, { speed, onDone: stopReplay });
-      if (!replayCtl) return;
-      replaying = true;
-      paused = false;
-      setReplayBtn("⏸ Pause");
-    } else if (!paused) {
-      replayCtl.pause();
-      paused = true;
-      setReplayBtn("▶ Resume");
-    } else {
-      replayCtl.resume();
-      paused = false;
-      setReplayBtn("⏸ Pause");
-    }
+
+  let dragging = false;
+  function seekFromEvent(e) {
+    if (!replayCtl) return;
+    const r = $("rp-track").getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    replayCtl.seek(frac);
+    updateProgress(frac);
   }
 
   function wireControls() {
@@ -170,14 +196,20 @@ const Visualize = (function () {
         stopReplay();
       })
     );
-    $("speed-toggle").querySelectorAll(".seg-btn").forEach((b) =>
+    $("rp-speed").querySelectorAll(".seg-btn").forEach((b) =>
       b.addEventListener("click", () => {
         speed = Number(b.dataset.speed);
-        $("speed-toggle").querySelectorAll(".seg-btn").forEach((x) => x.classList.toggle("active", x === b));
+        $("rp-speed").querySelectorAll(".seg-btn").forEach((x) => x.classList.toggle("active", x === b));
         if (replayCtl) replayCtl.setSpeed(speed);
       })
     );
     $("replay-btn").addEventListener("click", onReplayClick);
+    $("rp-play").addEventListener("click", togglePlay);
+    $("rp-close").addEventListener("click", stopReplay);
+    // Scrubber: click or drag to seek.
+    $("rp-track").addEventListener("mousedown", (e) => { dragging = true; seekFromEvent(e); });
+    window.addEventListener("mousemove", (e) => { if (dragging) seekFromEvent(e); });
+    window.addEventListener("mouseup", () => { dragging = false; });
     $("filter-airline").addEventListener("change", (e) => { fAirline = e.target.value; applyFilter(); });
     $("filter-year").addEventListener("change", (e) => { fYear = e.target.value; applyFilter(); });
   }

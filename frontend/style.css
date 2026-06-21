@@ -252,9 +252,44 @@ html, body {
 .leaflet-tooltip.flight-tip::before { display: none; }
 .flight-tip .tip-logo { width: 14px; height: 14px; object-fit: contain; background: #fff; border-radius: 2px; vertical-align: -3px; margin-right: 5px; }
 
+/* Replay player (bottom of the map) */
+.replay-player {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(720px, 92%);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(10, 22, 44, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+.rp-icon {
+  flex: none; width: 30px; height: 30px; border-radius: 8px; border: none; cursor: pointer;
+  background: var(--accent); color: #06283d; font-size: 13px;
+  display: flex; align-items: center; justify-content: center;
+}
+#rp-close { background: #2a3a55; color: var(--text); }
+#rp-close:hover { background: #3a4f72; }
+.rp-cur { color: var(--accent); font-family: ui-monospace, monospace; font-size: 13px; font-weight: 600; min-width: 42px; }
+.rp-time { color: var(--muted); font-family: ui-monospace, monospace; font-size: 11px; min-width: 38px; text-align: center; }
+.rp-track { flex: 1; height: 6px; background: #0b1322; border: 1px solid var(--border); border-radius: 999px; position: relative; cursor: pointer; }
+.rp-fill { height: 100%; width: 0; background: var(--accent); border-radius: 999px; position: relative; }
+.rp-fill::after {
+  content: ""; position: absolute; right: -5px; top: 50%; transform: translateY(-50%);
+  width: 11px; height: 11px; border-radius: 50%; background: #fff; box-shadow: 0 0 5px var(--accent);
+}
+#rp-speed .seg-btn { padding: 4px 7px; font-size: 11px; }
+
 /* Replay plane icon */
 .plane-icon { color: #fff; filter: drop-shadow(0 0 4px rgba(56,189,248,0.9)); transition: none; }
-.plane-icon svg { display: block; }
+.plane-icon svg { display: block; transform-origin: 50% 50%; }
 
 /* Airport nodes: glowing dots with a white core, matching the cyan art style. */
 .airport-node span {

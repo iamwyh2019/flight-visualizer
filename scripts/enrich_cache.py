@@ -32,8 +32,12 @@ def main() -> None:
             continue
         feat = json.loads(path.read_text(encoding="utf-8"))
         props = feat.get("properties", {})
-        if props.get("takeoff") != f.takeoff_actual.isoformat():
-            props["takeoff"] = f.takeoff_actual.isoformat()
+        want = {
+            "takeoff": f.takeoff_actual.isoformat() if f.takeoff_actual else None,
+            "landing": f.landing_actual.isoformat() if f.landing_actual else None,
+        }
+        if any(props.get(k) != v for k, v in want.items()):
+            props.update(want)
             feat["properties"] = props
             path.write_text(json.dumps(feat), encoding="utf-8")
             updated += 1

@@ -443,9 +443,10 @@ const FlightMap = (function () {
   }
 
   function planeIconHtml() {
+    // Symmetric plane, nose at top-center (points north at 0deg) so rotate(bearing) is exact.
     return (
       '<svg width="22" height="22" viewBox="0 0 24 24">' +
-      '<path fill="currentColor" d="M12 2l1.6 7.2 7.4 3.6v1.8l-7.4-2.2L13 19l2.4 1.6v1.2L12 20.6 8.6 21.8v-1.2L11 19l-.6-4.8L3 16.4v-1.8l7.4-3.6z"/></svg>'
+      '<path fill="currentColor" d="M12 2c-.6 0-1 .6-1 1.4V9.5L3 14.5V16l8-2.4V18.6L8.6 20.3v1.2L12 20.5l3.4 1V20.3L13 18.6V13.6L21 16V14.5L13 9.5V3.4C13 2.6 12.6 2 12 2Z"/></svg>'
     );
   }
   function planeIcon() {
@@ -504,10 +505,11 @@ const FlightMap = (function () {
       rotatePlane(plane, bearing(pts[i0], pts[i1]));
       trail.setLatLngs(ll.slice(0, i1).concat([[lat, lon]]));
       if (opts && opts.onTick) opts.onTick(d / total);
-      if (d >= total) {
-        stopReplay();
-        if (opts && opts.onDone) opts.onDone();
-        return;
+      if (d >= total && !paused) {
+        // Hold at the destination (paused) — the player stays open until closed.
+        paused = true;
+        elapsed = BASE_MS;
+        if (opts && opts.onEnd) opts.onEnd();
       }
       raf = requestAnimationFrame(frame);
     }
@@ -515,9 +517,10 @@ const FlightMap = (function () {
 
     replay = {
       pause() { paused = true; },
-      resume() { paused = false; last = null; },
+      resume() { if (elapsed >= BASE_MS) elapsed = 0; paused = false; last = null; }, // replay if at end
       isPaused() { return paused; },
       setSpeed(s) { speed = s; },
+      seek(frac) { elapsed = Math.max(0, Math.min(1, frac)) * BASE_MS; paused = true; last = null; },
       _stop() { if (raf) cancelAnimationFrame(raf); },
     };
     return replay;
