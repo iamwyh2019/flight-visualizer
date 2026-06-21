@@ -240,6 +240,20 @@ const FlightMap = (function () {
   let selectedId = null;
   let onSelectCb = null;
   let replay = null;
+  let replaying = false;
+
+  // Toggle pointer events on the vector canvas so tracks don't react to hover
+  // (highlight/tooltip) while a replay is playing.
+  function setTracksInteractive(on) {
+    if (!map) return;
+    const cv = map.getPane("overlayPane").querySelector("canvas");
+    if (cv) cv.style.pointerEvents = on ? "" : "none";
+  }
+  function closeAllTooltips() {
+    Object.values(flightLayers).forEach((fl) =>
+      fl.visible.forEach((ly) => ly.closeTooltip && ly.closeTooltip())
+    );
+  }
 
   function segmentsOf(geom) {
     return geom.type === "LineString" ? [geom.coordinates] : geom.coordinates;
@@ -259,6 +273,7 @@ const FlightMap = (function () {
   function emphasize(ly) { ly.setStyle({ weight: ly._bw + 2, opacity: 1 }); ly.bringToFront(); }
 
   function hoverFlight(id, on) {
+    if (replaying) return; // no hover highlight/tooltip during replay
     const fl = flightLayers[id];
     if (!fl) return;
     const hot = on || fl.selected;
@@ -393,12 +408,15 @@ const FlightMap = (function () {
     for (let i = 1; i < ll.length; i++) dist.push(dist[i - 1] + map.distance(ll[i - 1], ll[i]));
     const total = dist[dist.length - 1] || 1;
 
+    replaying = true;
+    closeAllTooltips();
+    setTracksInteractive(false);
     dimAll(true);
     const trail = L.polyline([ll[0]], { color: "#ffffff", weight: 3, opacity: 0.95 }).addTo(replayLayer);
     const plane = L.marker(ll[0], { icon: planeIcon(), interactive: false, keyboard: false }).addTo(replayLayer);
     rotatePlane(plane, bearing(pts[0], pts[1]));
 
-    const BASE_MS = 9000;
+    const BASE_MS = 12000; // 0.75x of the previous 9s base (slower default)
     let speed = (opts && opts.speed) || 1;
     let elapsed = 0, last = null, paused = false, raf = null;
 
@@ -441,6 +459,8 @@ const FlightMap = (function () {
     if (replay) { replay._stop(); replay = null; }
     if (replayLayer) replayLayer.clearLayers();
     if (Object.keys(flightLayers).length) dimAll(false);
+    replaying = false;
+    setTracksInteractive(true);
   }
 
   function refresh() {
