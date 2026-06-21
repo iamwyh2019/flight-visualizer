@@ -41,3 +41,28 @@ def save_feature(cache_dir: str | Path, flight: Flight, feature: dict) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(feature), encoding="utf-8")
     return path
+
+
+# --- Negative cache: flights with no ADS-B data in any candidate archive ---------
+# A completed flight that yields nothing won't change, so remember it and don't
+# re-download multi-GB archives for it on every run. Delete empty_flights.json to
+# force a re-attempt.
+
+def _empty_path(cache_dir: str | Path) -> Path:
+    return Path(cache_dir) / "empty_flights.json"
+
+
+def load_empty(cache_dir: str | Path) -> set[str]:
+    path = _empty_path(cache_dir)
+    if path.exists():
+        try:
+            return set(json.loads(path.read_text(encoding="utf-8")))
+        except (ValueError, OSError):
+            return set()
+    return set()
+
+
+def save_empty(cache_dir: str | Path, keys: set[str]) -> None:
+    path = _empty_path(cache_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(sorted(keys)), encoding="utf-8")

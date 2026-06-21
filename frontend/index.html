@@ -26,14 +26,13 @@
     <section class="panel">
       <!-- Fetch view -->
       <div class="view" id="view-fetch">
-        <button id="fetch-btn" class="primary">Fetch latest day</button>
+        <div class="btn-row">
+          <button id="fetch-btn" class="primary">Fetch all flights</button>
+          <button id="stop-btn" class="danger hidden">Stop</button>
+        </div>
+        <div id="status-line" class="status-line hidden"></div>
 
         <div id="flight-card" class="card hidden"></div>
-
-        <div id="progress-wrap" class="progress-wrap hidden">
-          <div class="progress-label"><span id="progress-text">Downloading…</span></div>
-          <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
-        </div>
 
         <h3 class="log-title">Live log</h3>
         <pre id="log" class="log"></pre>

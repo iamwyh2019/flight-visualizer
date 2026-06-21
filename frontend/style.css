@@ -66,8 +66,10 @@ html, body {
 #map { position: absolute; inset: 0; background: #061024; }
 .leaflet-container { background: #061024; }
 
+.btn-row { display: flex; gap: 8px; }
+
 .primary {
-  width: 100%;
+  flex: 1;
   background: var(--accent);
   color: #06283d;
   font-weight: 600;
@@ -76,8 +78,63 @@ html, body {
   border-radius: 10px;
   padding: 12px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: filter 0.15s ease;
 }
-.primary:disabled { opacity: 0.55; cursor: progress; }
+.primary:hover { filter: brightness(1.06); }
+
+/* Running state: the button background IS the progress bar (filled to --pct). */
+.primary.running {
+  cursor: pointer; /* clickable to pause */
+  color: #eaf6ff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  background: linear-gradient(
+    to right,
+    #38bdf8 0,
+    #38bdf8 var(--pct, 0%),
+    #16324e var(--pct, 0%),
+    #16324e 100%
+  );
+  transition: background 0.2s ease;
+}
+/* Hover while running dims the fill slightly so the "⏸ Pause" affordance reads. */
+.primary.running:hover { filter: brightness(1.12); }
+
+/* Spinner shown inside the button while fetching (light, reads on either fill). */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Status line below the button: which day/flight is being worked on. */
+.status-line {
+  margin: 8px 2px 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.danger {
+  background: #ef4444;
+  color: #fff;
+  font-weight: 600;
+  font-size: 15px;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 18px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.danger:hover { background: #dc2626; }
 
 .hint { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
 
@@ -104,10 +161,23 @@ html, body {
 .flight-row b { color: var(--text); }
 .flight-row .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 
-.progress-wrap { margin: 14px 0; }
-.progress-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-.progress-bar { height: 10px; background: #0b1322; border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
-.progress-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.2s ease; }
+/* Backfill status table (per-date). */
+.day-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; }
+.day-table th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.day-table td { padding: 5px 6px; border-bottom: 1px solid rgba(36, 50, 80, 0.5); color: var(--text); }
+.day-table tr.empty-row td { color: var(--muted); opacity: 0.6; }
+.src { font-size: 10px; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.src.downloaded { background: rgba(56, 189, 248, 0.16); color: #7dd3fc; }
+.src.cached { background: rgba(148, 163, 184, 0.16); color: #cbd5e1; }
 
 .log-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 18px 0 6px; }
 .log {
@@ -126,12 +196,26 @@ html, body {
 
 .hidden { display: none !important; }
 
-/* Airport reference pins */
-.airport-pin span {
+/* Airport nodes: glowing dots with a white core, matching the cyan art style. */
+.airport-node span {
   display: block;
-  width: 14px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  border: 2px solid #fff;
-  box-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+  background: radial-gradient(circle at 50% 50%, #ffffff 0%, #7dd3fc 45%, rgba(56, 189, 248, 0) 78%);
+  box-shadow: 0 0 8px 2px rgba(56, 189, 248, 0.75);
 }
+
+/* IATA labels: no box, faint glow so they read on the dark canvas. */
+.leaflet-tooltip.airport-label {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 4px #061024, 0 0 4px #061024, 0 0 6px #061024;
+}
+.leaflet-tooltip.airport-label::before { display: none; } /* hide the arrow */

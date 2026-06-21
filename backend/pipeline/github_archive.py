@@ -27,6 +27,10 @@ EmitFn = Callable[..., None]
 _API = "https://api.github.com"
 
 
+class Cancelled(Exception):
+    """Raised when a run is aborted (e.g. the web client disconnected)."""
+
+
 def _repo_for_year(year: int) -> str:
     return f"adsblol/globe_history_{year}"
 
@@ -83,20 +87,32 @@ class _MultiPartReader:
             self._fh = None
 
 
+def _tar_assets(release: dict) -> list[dict]:
+    return [a for a in release.get("assets", []) if ".tar." in a["name"]]
+
+
 def _resolve_release(client: httpx.Client, repo: str, d: date, emit: EmitFn) -> dict:
-    """Return the release JSON for the date, preferring prod then staging."""
+    """Return a release for the date that actually has tar assets, prod then staging.
+
+    A prod release that exists but carries no tar parts (a known adsb.lol data gap)
+    is treated as a miss so we fall back to staging instead of giving up.
+    """
     for channel in ("prod", "staging"):
         tag = _tag(d, channel)
         url = f"{_API}/repos/{repo}/releases/tags/{tag}"
         resp = client.get(url, headers=_headers())
         if resp.status_code == 200:
-            emit("log", message=f"Matched release {tag}")
-            return resp.json()
+            release = resp.json()
+            if _tar_assets(release):
+                emit("log", message=f"Matched release {tag}")
+                return release
+            emit("log", message=f"{channel} release {tag} has no tar assets, trying next")
+            continue
         if resp.status_code == 404:
             emit("log", message=f"No {channel} release for {d.isoformat()} ({tag})")
             continue
         resp.raise_for_status()
-    raise FileNotFoundError(f"No prod or staging archive found for {d.isoformat()} in {repo}")
+    raise FileNotFoundError(f"No usable prod or staging archive for {d.isoformat()} in {repo}")
 
 
 def fetch_traces(
@@ -104,6 +120,7 @@ def fetch_traces(
     icao24s: list[str],
     work_dir: str | Path,
     emit: EmitFn,
+    cancelled: Callable[[], bool] = lambda: False,
 ) -> dict[str, bytes]:
     """Download the day's archive ONCE and extract every requested aircraft's trace.
 
@@ -147,6 +164,8 @@ def fetch_traces(
                     resp.raise_for_status()
                     with open(dest, "wb") as out:
                         for chunk in resp.iter_bytes(chunk_size=1024 * 1024):
+                            if cancelled():
+                                raise Cancelled()
                             out.write(chunk)
                             downloaded += len(chunk)
                             emit(

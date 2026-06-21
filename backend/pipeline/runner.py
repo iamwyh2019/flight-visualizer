@@ -1,16 +1,28 @@
 """Orchestrate the fetch pipeline, emitting progress events.
 
-`emit(kind, **fields)` is the sink for live updates (kinds: "log", "progress",
-"done", "error"). This is deliberately synchronous/blocking; the web layer runs it
-in a worker thread and forwards events to the browser over SSE.
+`emit(kind, **fields)` is the sink for live updates; the web layer runs this in a
+worker thread and forwards events to the browser over SSE. Event kinds:
+  - log        : free-text status line
+  - routes     : {counts, max} — per-route flight counts (drives line opacity)
+  - day_start  : {index, total, date, flights, need_download} — a group begins
+  - progress   : {downloaded, total} — byte progress of the current download
+  - day        : {index, total, date, flights:[entry...], summary} — a group finished
+  - done       : {summary} — the whole run finished
+  - error      : {message}
 
-Flights are processed a whole UTC day at a time: every flight on the same day
-shares ONE archive download and ONE tar scan (same-day dedup), so N same-day
-flights cost one download instead of N.
+Flights are fetched a whole UTC day at a time (same-day dedup: one download + one
+tar scan per day), keyed by the takeoff's UTC date. Two real failure modes are
+tolerated gracefully:
+  * Missing prod archive: some days' prod release is empty (a known adsb.lol gap);
+    we fall back to the staging release (handled in github_archive).
+  * Genuine coverage gaps: an aircraft is in the archive but has no points during
+    the flight's window. These are remembered (negative cache) so we never
+    re-download a multi-GB archive for a flight that will never resolve.
 """
 
 from __future__ import annotations
 
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -28,15 +40,26 @@ EmitFn = Callable[..., None]
 
 @dataclass
 class _Plan:
-    """Everything needed to slice one flight out of its day's archive."""
-
     flight: Flight
     icao: str
     dep: Airport
     arr: Airport
     start_utc: datetime
     end_utc: datetime
-    archive_date: date
+    archive_day: date = None  # the takeoff's UTC date
+
+    @property
+    def key(self) -> str:
+        return cache.flight_key(self.flight)
+
+
+def _flights_word(n: int) -> str:
+    return "flight" if n == 1 else "flights"
+
+
+def _route_key(a: str, b: str) -> str:
+    """Unordered route identity, e.g. ORD<->MSN and MSN<->ORD share one key."""
+    return "|".join(sorted([a, b]))
 
 
 def _count(feature: dict) -> tuple[int, int]:
@@ -59,7 +82,7 @@ def _flight_entry(feature: dict, dep: Airport, arr: Airport) -> dict:
 
 
 def _plan(flight: Flight, emit: EmitFn) -> _Plan | None:
-    """Resolve icao + airports + UTC window for a flight, or None if unprocessable."""
+    """Resolve icao + airports + UTC window + candidate archive days, or None."""
     try:
         icao = reg_to_icao(flight.tail_number)
         arrival_iata = flight.diverted_to or flight.to_iata
@@ -67,97 +90,183 @@ def _plan(flight: Flight, emit: EmitFn) -> _Plan | None:
         arr = get_airport(arrival_iata)
         start_utc = local_to_utc(flight.takeoff_actual, flight.from_iata)
         end_utc = local_to_utc(flight.landing_actual, arrival_iata)
-        return _Plan(flight, icao, dep, arr, start_utc, end_utc, start_utc.date())
-    except (NotImplementedError, KeyError) as exc:
+    except NotImplementedError:
+        emit("log", message=f"Skipping {flight.flight} ({flight.tail_number}): non-US registration")
+        return None
+    except KeyError as exc:
         emit("log", message=f"Skipping {flight.flight} ({flight.tail_number}): {exc}")
         return None
 
+    return _Plan(flight, icao, dep, arr, start_utc, end_utc, start_utc.date())
 
-def fetch_latest_day(
-    csv_path: str | Path, work_dir: str | Path, emit: EmitFn, cache_dir: str | Path
+
+def _slice_to_feature(p: _Plan, raw: bytes, cache_dir: str | Path, emit: EmitFn) -> dict | None:
+    """Decode a trace, slice this flight's leg, build + cache the feature (or None)."""
+    trace = trace_extract.decode_trace(raw)
+    trace_extract.verify_registration(trace, p.flight.tail_number, emit)
+    segments = slice_clean.process(trace, p.start_utc, p.end_utc)
+    if not segments:
+        return None
+    feature = build_feature(p.flight, segments)
+    cache.save_feature(cache_dir, p.flight, feature)
+    return feature
+
+
+def fetch_all_days(
+    csv_path: str | Path,
+    work_dir: str | Path,
+    emit: EmitFn,
+    cache_dir: str | Path,
+    cancelled: Callable[[], bool] = lambda: False,
+    paused: Callable[[], bool] = lambda: False,
 ) -> dict:
-    """Process every flight on the most-recent UTC day in one download + scan."""
+    """Process every flight in the log, day by day, streaming results to the map."""
+    _clean_tmp(work_dir)
+
     flyable = [
         f
         for f in parse_csv(csv_path)
         if not f.canceled and f.takeoff_actual and f.landing_actual and f.tail_number
     ]
-    if not flyable:
-        raise ValueError("No flyable flights found in CSV.")
-
-    # Group by UTC archive date and pick the latest day.
     plans = [p for p in (_plan(f, emit) for f in flyable) if p is not None]
-    by_day: dict[date, list[_Plan]] = defaultdict(list)
-    for p in plans:
-        by_day[p.archive_date].append(p)
-    target_day = max(by_day)
-    day_plans = by_day[target_day]
-    emit(
-        "log",
-        message=(
-            f"Latest archive day {target_day.isoformat()} has {len(day_plans)} flight(s): "
-            + ", ".join(f"{p.flight.flight} {p.flight.from_iata}->{p.flight.to_iata}" for p in day_plans)
-        ),
-    )
+    if not plans:
+        raise ValueError("No processable (US) flights found in CSV.")
 
-    # Reuse anything already cached; only the rest needs the archive.
-    cached: dict[str, dict] = {}  # flight_key -> feature
-    uncached: list[_Plan] = []
-    for p in day_plans:
+    # Per-route counts up front (drives line opacity on the frontend).
+    route_counts: dict[str, int] = defaultdict(int)
+    for p in plans:
+        route_counts[_route_key(p.dep.iata, p.arr.iata)] += 1
+    route_max = max(route_counts.values()) if route_counts else 1
+    emit("routes", counts=dict(route_counts), max=route_max)
+    busiest = max(route_counts, key=route_counts.get) if route_counts else None
+    if busiest:
+        emit("log", message=f"Busiest route {busiest.replace('|', '–')} flown {route_max}x")
+
+    empty = cache.load_empty(cache_dir)
+    satisfied: set[str] = set()
+    new_empty: set[str] = set()
+
+    # Split into already-cached vs needs-fetching (skipping known-empty flights).
+    cached_by_day: dict[date, list[dict]] = defaultdict(list)
+    pending: list[_Plan] = []
+    for p in plans:
         feat = cache.load_feature(cache_dir, p.flight)
         if feat is not None:
-            cached[cache.flight_key(p.flight)] = feat
+            cached_by_day[p.archive_day].append(_flight_entry(feat, p.dep, p.arr))
+            satisfied.add(p.key)
+        elif p.key in empty:
+            emit("log", message=f"{p.flight.flight}: no data on record, skipping (cached miss)")
         else:
-            uncached.append(p)
-    emit("log", message=f"{len(cached)} cached, {len(uncached)} need the archive")
+            pending.append(p)
 
-    # One download for the whole day; extract every aircraft in a single scan.
-    traces: dict[str, bytes] = {}
-    if uncached:
-        icaos = sorted({p.icao for p in day_plans})  # refresh all in the one scan
-        emit("log", message=f"Downloading {target_day.isoformat()} once for {len(icaos)} aircraft")
-        traces = github_archive.fetch_traces(target_day, icaos, work_dir, emit)
+    # Total day-groups for the progress label: cached days + distinct days to fetch.
+    fetch_days = {p.archive_day for p in pending}
+    total = len(set(cached_by_day) | fetch_days)
+    idx = 0
 
-    # Slice each flight's leg out of the shared day trace.
-    entries: list[dict] = []
-    skipped: list[str] = []
-    for p in day_plans:
-        key = cache.flight_key(p.flight)
-        feature = None
-        if key in cached:
-            feature = cached[key]
-            emit("log", message=f"{p.flight.flight}: from cache")
-        elif p.icao in traces:
-            trace = trace_extract.decode_trace(traces[p.icao])
-            trace_extract.verify_registration(trace, p.flight.tail_number, emit)
-            segments = slice_clean.process(trace, p.start_utc, p.end_utc)
-            if not segments:
-                emit("log", message=f"{p.flight.flight}: no points in UTC window, skipped")
-                skipped.append(p.flight.flight)
+    def emit_group(day: date, entries: list[dict], downloaded: bool, from_cache: int):
+        nonlocal idx
+        idx += 1
+        n = len(entries)
+        emit(
+            "day",
+            index=idx,
+            total=total,
+            date=day.isoformat(),
+            flights=entries,
+            summary={
+                "date": day.isoformat(),
+                "drawn": n,
+                "from_cache": from_cache,
+                "downloaded": downloaded,
+            },
+        )
+        emit("log", message=f"✓ {day.isoformat()}: {n} {_flights_word(n)} drawn")
+
+    # 1) Draw cached flights immediately (no downloads), newest day first.
+    for day in sorted(cached_by_day, reverse=True):
+        emit_group(day, cached_by_day[day], downloaded=False, from_cache=len(cached_by_day[day]))
+
+    # 2) Download each needed UTC day once (newest first) and slice its flights.
+    groups: dict[date, list[_Plan]] = defaultdict(list)
+    for p in pending:
+        groups[p.archive_day].append(p)
+
+    for day in sorted(groups, reverse=True):
+        if cancelled():
+            emit("log", message="Run cancelled — stopping.")
+            cache.save_empty(cache_dir, empty | new_empty)
+            emit("done", summary=_summary(plans, satisfied, new_empty, stopped=True))
+            return _summary(plans, satisfied, new_empty, stopped=True)
+
+        # Pause point (between days): the previous day is already cached, so nothing
+        # is wasted while we wait here for resume.
+        if paused():
+            emit("paused")
+            while paused() and not cancelled():
+                time.sleep(0.3)
+            emit("resumed")
+            if cancelled():
+                emit("log", message="Run cancelled — stopping.")
+                cache.save_empty(cache_dir, empty | new_empty)
+                emit("done", summary=_summary(plans, satisfied, new_empty, stopped=True))
+                return _summary(plans, satisfied, new_empty, stopped=True)
+
+        day_plans = groups[day]
+        icaos = sorted({p.icao for p in day_plans})
+        emit("day_start", index=idx + 1, total=total, date=day.isoformat(),
+             flights=len(day_plans), need_download=True)
+        emit("log", message=f"{day.isoformat()}: downloading once for {len(icaos)} aircraft")
+        try:
+            traces = github_archive.fetch_traces(day, icaos, work_dir, emit, cancelled)
+        except github_archive.Cancelled:
+            emit("log", message="Run cancelled mid-download — archive cleaned up, stopping.")
+            cache.save_empty(cache_dir, empty | new_empty)
+            emit("done", summary=_summary(plans, satisfied, new_empty, stopped=True))
+            return _summary(plans, satisfied, new_empty, stopped=True)
+        except FileNotFoundError as exc:
+            emit("log", message=f"{day.isoformat()}: {exc}")
+            traces = {}
+
+        entries: list[dict] = []
+        for p in day_plans:
+            if p.icao not in traces:
                 continue
-            feature = build_feature(p.flight, segments)
-            saved = cache.save_feature(cache_dir, p.flight, feature)
-            n = sum(len(s) for s in segments)
-            emit("log", message=f"{p.flight.flight}: sliced {n} pts -> saved {saved.name}")
-        else:
-            emit("log", message=f"{p.flight.flight}: aircraft {p.icao} not in archive, skipped")
-            skipped.append(p.flight.flight)
-            continue
-        entries.append(_flight_entry(feature, p.dep, p.arr))
+            feature = _slice_to_feature(p, traces[p.icao], cache_dir, emit)
+            if feature is None:
+                continue  # aircraft present but no points in window -> genuine gap
+            satisfied.add(p.key)
+            entries.append(_flight_entry(feature, p.dep, p.arr))
+        emit_group(day, entries, downloaded=True, from_cache=0)
 
-    if not entries:
-        raise ValueError(f"No tracks could be built for {target_day.isoformat()}.")
+    # 3) Anything still unsatisfied after all candidate days -> negative cache.
+    for p in pending:
+        if p.key not in satisfied:
+            new_empty.add(p.key)
+            emit("log", message=f"{p.flight.flight}: no ADS-B data found, recording as empty")
+    cache.save_empty(cache_dir, empty | new_empty)
 
-    payload = {
-        "date": target_day.isoformat(),
-        "flights": entries,
-        "summary": {
-            "total": len(day_plans),
-            "drawn": len(entries),
-            "from_cache": len(cached),
-            "downloaded": bool(uncached),
-            "skipped": skipped,
-        },
+    summary = _summary(plans, satisfied, new_empty, stopped=False)
+    emit("done", summary=summary)
+    return summary
+
+
+def _summary(plans, satisfied, new_empty, stopped) -> dict:
+    return {
+        "days": len({p.archive_day for p in plans}),
+        "flights_drawn": len(satisfied),
+        "empty": len(new_empty),
+        "skipped": sorted(new_empty),
+        "stopped": stopped,
     }
-    emit("done", payload=payload)
-    return payload
+
+
+def _clean_tmp(work_dir: str | Path) -> None:
+    """Remove any orphaned archive parts left by a previously aborted run."""
+    p = Path(work_dir)
+    if p.exists():
+        for f in p.glob("*.tar.*"):
+            try:
+                f.unlink()
+            except OSError:
+                pass
