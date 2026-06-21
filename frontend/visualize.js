@@ -27,8 +27,6 @@ const Visualize = (function () {
   function buildItems() {
     items = data.flights.map((f) => {
       const p = f.properties;
-      p._airline = airlineName(p.airline); // enrich for the map tooltip
-      p._logo = airlineLogo(p.airline);
       const key = [p.from, p.diverted_to || p.to].sort().join("|");
       return {
         id: [p.date, p.flight, p.tail_number].join("_"),

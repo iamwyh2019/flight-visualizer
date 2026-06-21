@@ -53,6 +53,7 @@ const FlightMap = (function () {
     replayLayer = L.layerGroup().addTo(map); // trail + plane, topmost
     loadRunways();
     loadDetail();
+    loadAirlines();
     return map;
   }
 
@@ -73,6 +74,14 @@ const FlightMap = (function () {
   let detailDrawnFor = new Set();
   let RUNWAYS = null; // { IATA: [ {le:[lat,lon], he:[lat,lon], width_ft} ] }
   let DETAIL = null; // { IATA: GeoJSON FeatureCollection (taxiway/apron/terminal) }
+  let AIRLINES = {}; // ICAO -> {name, iata, logo} (for hover tooltips, both views)
+
+  function loadAirlines() {
+    fetch("data/airlines.json")
+      .then((r) => r.json())
+      .then((d) => { AIRLINES = d || {}; })
+      .catch(() => { AIRLINES = {}; });
+  }
 
   function loadRunways() {
     if (RUNWAYS !== null) return;
@@ -207,11 +216,17 @@ const FlightMap = (function () {
     WRAP.forEach((off) => {
       const shift = { coordsToLatLng: (c) => L.latLng(c[1], c[0] + off) };
       // Glow: a wide, faint underlay beneath a bright core line.
-      const glow = L.geoJSON(feature, { style: { color: TRACK_COLOR, weight: 7, opacity: 0.18 * opacity }, ...shift });
-      const core = L.geoJSON(feature, { style: { color: TRACK_COLOR, weight: 2, opacity: opacity }, ...shift });
+      const glow = L.geoJSON(feature, { style: { color: TRACK_COLOR, weight: 7, opacity: 0.18 * opacity }, interactive: false, ...shift });
+      const core = L.geoJSON(feature, { style: { color: TRACK_COLOR, weight: 2, opacity: opacity }, interactive: off === 0, ...shift });
       trackLayer.addLayer(glow);
       trackLayer.addLayer(core);
-      if (off === 0) runBounds.extend(core.getBounds());
+      if (off === 0) {
+        // Hover: highlight + tooltip (lazy so airline data resolves once loaded).
+        core.bindTooltip(() => tooltipText(feature.properties), { sticky: true, direction: "top", className: "flight-tip" });
+        core.on("mouseover", () => { core.setStyle({ weight: 4, opacity: 1 }); core.bringToFront(); });
+        core.on("mouseout", () => core.setStyle({ weight: 2, opacity: opacity }));
+        runBounds.extend(core.getBounds());
+      }
     });
   }
 
@@ -273,9 +288,10 @@ const FlightMap = (function () {
     return geom.type === "LineString" ? geom.coordinates : geom.coordinates.flat();
   }
   function tooltipText(p) {
-    const logo = p._logo ? `<img class="tip-logo" src="${p._logo}">` : "";
-    const al = p._airline || p.airline || "";
-    return `${logo}<b>${p.flight}</b> · ${al}<br>${p.date} · ${p.from}→${p.diverted_to || p.to}`;
+    const a = AIRLINES[p.airline] || {};
+    const logo = a.logo ? `<img class="tip-logo" src="${a.logo}">` : "";
+    const name = a.name || p.airline || "";
+    return `${logo}<b>${p.flight}</b> · ${name}<br>${p.date} · ${p.from}→${p.diverted_to || p.to}`;
   }
   function altColor(altFt) {
     const t = Math.max(0, Math.min(1, (altFt || 0) / 40000));
@@ -296,9 +312,8 @@ const FlightMap = (function () {
   function buildFlight(item) {
     const grp = L.layerGroup();
     const visible = [];
-    const tip = tooltipText(item.feature.properties);
     const bind = (ly) => {
-      ly.bindTooltip(tip, { sticky: true, direction: "top", className: "flight-tip" });
+      ly.bindTooltip(() => tooltipText(item.feature.properties), { sticky: true, direction: "top", className: "flight-tip" });
       ly.on("mouseover", () => hoverFlight(item.id, true));
       ly.on("mouseout", () => hoverFlight(item.id, false));
       ly.on("click", () => onSelectCb && onSelectCb(item.id));
