@@ -21,9 +21,9 @@ const FlightMap = (function () {
         .then((geo) => L.geoJSON(geo, { style, interactive: false }).addTo(map))
         .catch(() => {/* borders are decorative; ignore load failures */});
     addBorders("data/world-countries.geojson", {
-      color: "#3f567d",
-      weight: 0.8,
-      opacity: 0.45,
+      color: "#6f8cbd",
+      weight: 1,
+      opacity: 0.7,
       fill: false,
     });
     addBorders("data/us-states.geojson", {

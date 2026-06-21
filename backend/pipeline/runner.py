@@ -81,17 +81,17 @@ def _flight_entry(feature: dict, dep: Airport, arr: Airport) -> dict:
     }
 
 
-def _plan(flight: Flight, emit: EmitFn) -> _Plan | None:
+def _plan(flight: Flight, emit: EmitFn, cache_dir: str | Path) -> _Plan | None:
     """Resolve icao + airports + UTC window + candidate archive days, or None."""
     try:
-        icao = reg_to_icao(flight.tail_number)
+        icao = reg_to_icao(flight.tail_number, cache_dir)
         arrival_iata = flight.diverted_to or flight.to_iata
         dep = get_airport(flight.from_iata)
         arr = get_airport(arrival_iata)
         start_utc = local_to_utc(flight.takeoff_actual, flight.from_iata)
         end_utc = local_to_utc(flight.landing_actual, arrival_iata)
-    except NotImplementedError:
-        emit("log", message=f"Skipping {flight.flight} ({flight.tail_number}): non-US registration")
+    except NotImplementedError as exc:
+        emit("log", message=f"Skipping {flight.flight} ({flight.tail_number}): {exc}")
         return None
     except KeyError as exc:
         emit("log", message=f"Skipping {flight.flight} ({flight.tail_number}): {exc}")
@@ -128,7 +128,7 @@ def fetch_all_days(
         for f in parse_csv(csv_path)
         if not f.canceled and f.takeoff_actual and f.landing_actual and f.tail_number
     ]
-    plans = [p for p in (_plan(f, emit) for f in flyable) if p is not None]
+    plans = [p for p in (_plan(f, emit, cache_dir) for f in flyable) if p is not None]
     if not plans:
         raise ValueError("No processable (US) flights found in CSV.")
 

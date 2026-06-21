@@ -66,3 +66,25 @@ def save_empty(cache_dir: str | Path, keys: set[str]) -> None:
     path = _empty_path(cache_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(sorted(keys)), encoding="utf-8")
+
+
+# --- Registration -> icao24 cache (for non-US tails resolved via an API) ----------
+
+def _reg_path(cache_dir: str | Path) -> Path:
+    return Path(cache_dir) / "reg_icao.json"
+
+
+def load_reg_cache(cache_dir: str | Path) -> dict[str, str]:
+    path = _reg_path(cache_dir)
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            return {}
+    return {}
+
+
+def save_reg_cache(cache_dir: str | Path, mapping: dict[str, str]) -> None:
+    path = _reg_path(cache_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(mapping, indent=0, sort_keys=True), encoding="utf-8")
