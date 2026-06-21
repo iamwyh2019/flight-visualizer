@@ -142,6 +142,15 @@ def fetch_all_days(
     if busiest:
         emit("log", message=f"Busiest route {busiest.replace('|', '–')} flown {route_max}x")
 
+    # Auto-fetch any missing display assets (airline logos/names, airport diagrams).
+    try:
+        from . import assets
+
+        assets.ensure_airlines(sorted({p.flight.airline for p in plans if p.flight.airline}), emit)
+        assets.ensure_airports(sorted({c for p in plans for c in (p.dep.iata, p.arr.iata)}), emit)
+    except Exception as exc:  # never block the backfill on asset prefetch
+        emit("log", message=f"Asset prefetch skipped: {exc}")
+
     empty = cache.load_empty(cache_dir)
     satisfied: set[str] = set()
     new_empty: set[str] = set()
