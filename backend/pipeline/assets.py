@@ -80,6 +80,13 @@ _KNOWN: dict[str, tuple[str, str]] = {
     "BEL": ("Brussels Airlines", "SN"),
     "EZY": ("easyJet", "U2"),
     "EVA": ("EVA Air", "BR"),
+    # Major US carriers (pre-seeded for future flights).
+    "DAL": ("Delta Air Lines", "DL"),
+    "SWA": ("Southwest Airlines", "WN"),
+    "NKS": ("Spirit Airlines", "NK"),
+    "AAY": ("Allegiant Air", "G4"),
+    "HAL": ("Hawaiian Airlines", "HA"),
+    "FFT": ("Frontier Airlines", "F9"),
 }
 
 

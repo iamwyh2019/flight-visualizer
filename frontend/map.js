@@ -248,6 +248,12 @@ const FlightMap = (function () {
       const count = fl.airports ? routeCounts[routeKey(fl.airports)] || 1 : 1;
       addTrack(fl.feature, routeOpacity(count));
       if (fl.airports) {
+        drawConnectors(
+          fl.feature.geometry,
+          [fl.airports.from.lat, fl.airports.from.lon],
+          [fl.airports.to.lat, fl.airports.to.lon],
+          trackLayer
+        );
         addAirport(fl.airports.from);
         addAirport(fl.airports.to);
       }
@@ -297,16 +303,39 @@ const FlightMap = (function () {
     const t = Math.max(0, Math.min(1, (altFt || 0) / 40000));
     return `hsl(${Math.round(240 * t)}, 90%, 55%)`; // 0=red (low) -> 240=blue (high)
   }
-  function setBase(ly, w, o) { ly._bw = w; ly._bo = o; ly.setStyle({ weight: w, opacity: o }); }
-  function restore(ly) { ly.setStyle({ weight: ly._bw, opacity: ly._bo }); }
-  function emphasize(ly) { ly.setStyle({ weight: ly._bw + 2, opacity: 1 }); ly.bringToFront(); }
+
+  // When ADS-B coverage starts after takeoff / ends before landing, the track
+  // doesn't reach the airport — draw a dashed connector to bridge the gap.
+  const CONNECT_RADIUS_M = 3000;
+  function endpointsLL(geom) {
+    const segs = segmentsOf(geom);
+    if (!segs.length || !segs[0].length) return null;
+    const f = segs[0][0];
+    const lastSeg = segs[segs.length - 1];
+    const l = lastSeg[lastSeg.length - 1];
+    return { first: [f[1], f[0]], last: [l[1], l[0]] }; // [lat, lon]
+  }
+  function drawConnectors(geom, depLL, arrLL, target) {
+    const e = endpointsLL(geom);
+    if (!e) return;
+    const style = { color: TRACK_COLOR, weight: 1.5, opacity: 0.55, dashArray: "3 7", interactive: false };
+    if (depLL && map.distance(depLL, e.first) > CONNECT_RADIUS_M) L.polyline([depLL, e.first], style).addTo(target);
+    if (arrLL && map.distance(arrLL, e.last) > CONNECT_RADIUS_M) L.polyline([e.last, arrLL], style).addTo(target);
+  }
+  function setBase(ly, w, o) { ly._bw = w; ly._bo = o; ly._bc = ly.options.color; ly.setStyle({ weight: w, opacity: o }); }
+  // One place decides a layer's look. Selected wins over hover and is persistent
+  // (white + thick); hover is a transient thicken; otherwise the base style.
+  function styleFor(fl, ly, hovering) {
+    if (fl.selected) { ly.setStyle({ color: "#ffffff", weight: ly._bw + 2.5, opacity: 1 }); ly.bringToFront(); }
+    else if (hovering) { ly.setStyle({ color: ly._bc, weight: ly._bw + 2, opacity: 1 }); ly.bringToFront(); }
+    else { ly.setStyle({ color: ly._bc, weight: ly._bw, opacity: ly._bo }); }
+  }
 
   function hoverFlight(id, on) {
     if (replaying) return; // no hover highlight/tooltip during replay
     const fl = flightLayers[id];
     if (!fl) return;
-    const hot = on || fl.selected;
-    fl.visible.forEach((ly) => (hot ? emphasize(ly) : restore(ly)));
+    fl.visible.forEach((ly) => styleFor(fl, ly, on)); // selected stays selected on leave
   }
 
   function buildFlight(item) {
@@ -343,6 +372,10 @@ const FlightMap = (function () {
         });
       }
     });
+    const props = item.feature.properties;
+    const dep = vizAirports[props.from];
+    const arr = vizAirports[props.diverted_to || props.to];
+    drawConnectors(item.feature.geometry, dep && [dep.lat, dep.lon], arr && [arr.lat, arr.lon], grp);
     return { group: grp, visible };
   }
 
@@ -355,8 +388,9 @@ const FlightMap = (function () {
       flightLayers[item.id] = { visible, feature: item.feature, count: item.count, selected: false };
     });
     if (selectedId && flightLayers[selectedId]) {
-      flightLayers[selectedId].selected = true;
-      flightLayers[selectedId].visible.forEach(emphasize);
+      const fl = flightLayers[selectedId];
+      fl.selected = true;
+      fl.visible.forEach((ly) => styleFor(fl, ly, false));
     }
   }
 
@@ -387,14 +421,15 @@ const FlightMap = (function () {
 
   function selectFlight(id) {
     if (selectedId && flightLayers[selectedId]) {
-      flightLayers[selectedId].selected = false;
-      flightLayers[selectedId].visible.forEach(restore);
+      const prev = flightLayers[selectedId];
+      prev.selected = false;
+      prev.visible.forEach((ly) => styleFor(prev, ly, false));
     }
     selectedId = id;
     const fl = flightLayers[id];
     if (fl) {
       fl.selected = true;
-      fl.visible.forEach(emphasize);
+      fl.visible.forEach((ly) => styleFor(fl, ly, false));
     }
   }
 
@@ -424,7 +459,7 @@ const FlightMap = (function () {
 
   function dimAll(on) {
     Object.values(flightLayers).forEach((fl) =>
-      fl.visible.forEach((ly) => (on ? ly.setStyle({ opacity: 0.08 }) : (fl.selected ? emphasize : restore)(ly)))
+      fl.visible.forEach((ly) => (on ? ly.setStyle({ opacity: 0.08 }) : styleFor(fl, ly, false)))
     );
   }
 
@@ -503,6 +538,7 @@ const FlightMap = (function () {
   return {
     init, clear, beginRun, setRoutes, addFlights, refresh,
     showFlights, setColorScheme, selectFlight, replayFlight, stopReplay,
+    highlight: (id, on) => hoverFlight(id, on),
     getMap: () => map,
   };
 })();

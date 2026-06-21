@@ -14,7 +14,7 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">✈ Flight Visualizer <span class="tag">data fetcher</span></div>
+    <div class="brand">✈ Flight Visualizer</div>
     <nav class="tabs">
       <button class="tab active" data-view="fetch">Fetch</button>
       <button class="tab" data-view="visualize">Visualize</button>
@@ -111,7 +111,6 @@
       .catch(() => {
         const ft = document.querySelector('.tab[data-view="fetch"]');
         if (ft) ft.classList.add("hidden");
-        document.querySelector(".brand .tag").textContent = "flight map";
         showView("visualize");
       });
   </script>

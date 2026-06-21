@@ -21,6 +21,7 @@ def build_feature(flight: Flight, segments: list[list[list[float]]]) -> dict:
         "geometry": geometry,
         "properties": {
             "date": flight.date,
+            "takeoff": flight.takeoff_actual.isoformat() if flight.takeoff_actual else None,
             "airline": flight.airline,
             "flight": flight.flight,
             "aircraft_type": flight.aircraft_type,

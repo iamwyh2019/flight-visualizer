@@ -34,10 +34,11 @@ const Visualize = (function () {
         count: data.routes[key] || 1,
         props: p,
         year: 2000 + (parseInt((p.date || "").split("/")[2], 10) || 0),
-        sortKey: parseDate(p.date),
+        // Full takeoff timestamp when available so same-day flights order by time.
+        sortKey: p.takeoff ? Date.parse(p.takeoff) : parseDate(p.date),
       };
     });
-    items.sort((a, b) => b.sortKey - a.sortKey);
+    items.sort((a, b) => b.sortKey - a.sortKey); // reverse chronological
   }
 
   function getVisible() {
@@ -84,6 +85,8 @@ const Visualize = (function () {
         `<span class="fl-num">${it.props.flight}</span>` +
         `<span class="fl-route">${it.props.from}→${it.props.diverted_to || it.props.to}</span>`;
       row.addEventListener("click", () => select(it.id, false));
+      row.addEventListener("mouseenter", () => FlightMap.highlight(it.id, true));
+      row.addEventListener("mouseleave", () => FlightMap.highlight(it.id, false));
       list.appendChild(row);
     });
     const total = items.length;
