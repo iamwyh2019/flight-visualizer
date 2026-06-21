@@ -5,14 +5,18 @@ const FlightMap = (function () {
   let runwayLayer = null;
   let markerLayer = null;
   let replayLayer = null;
+  const WRAP = [-360, 0, 360]; // longitude offsets for horizontal infinite scroll
 
   function init() {
     if (map) return map;
     // No tile basemap: a solid dark-blue canvas (set in CSS) with thin
     // state-boundary outlines only — minimal, no map detail.
     // preferCanvas: render the many tracks/segments on canvas for performance.
-    map = L.map("map", { zoomControl: true, attributionControl: false, preferCanvas: true })
-      .setView([39.5, -98.35], 4); // US center
+    // worldCopyJump keeps overlays visible as you pan past the antimeridian, so the
+    // map scrolls horizontally without end (paired with the ±360° copies below).
+    map = L.map("map", {
+      zoomControl: true, attributionControl: false, preferCanvas: true, worldCopyJump: true,
+    }).setView([39.5, -98.35], 4); // US center
 
     // Borders drawn underneath everything as a faint wireframe: world country
     // outlines (so international airports aren't floating in a void) plus finer
@@ -20,7 +24,15 @@ const FlightMap = (function () {
     const addBorders = (url, style) =>
       fetch(url)
         .then((r) => r.json())
-        .then((geo) => L.geoJSON(geo, { style, interactive: false }).addTo(map))
+        .then((geo) =>
+          WRAP.forEach((off) =>
+            L.geoJSON(geo, {
+              style,
+              interactive: false,
+              coordsToLatLng: (c) => L.latLng(c[1], c[0] + off),
+            }).addTo(map)
+          )
+        )
         .catch(() => {/* borders are decorative; ignore load failures */});
     addBorders("data/world-countries.geojson", {
       color: "#6f8cbd",
@@ -106,14 +118,14 @@ const FlightMap = (function () {
     L.geoJSON(fc, { style: detailStyle, interactive: false }).addTo(runwayLayer);
   }
 
-  function airportNode(a) {
+  function airportNode(a, off) {
     const icon = L.divIcon({
       className: "airport-node",
       html: "<span></span>",
       iconSize: [12, 12],
       iconAnchor: [6, 6],
     });
-    return L.marker([a.lat, a.lon], { icon, keyboard: false })
+    return L.marker([a.lat, a.lon + off], { icon, keyboard: false })
       .bindTooltip(a.iata, {
         permanent: true,
         direction: "right",
@@ -158,9 +170,9 @@ const FlightMap = (function () {
   function addAirport(a) {
     if (seenAirports.has(a.iata)) return;
     seenAirports.add(a.iata);
-    airportNode(a).addTo(markerLayer);
+    WRAP.forEach((off) => airportNode(a, off).addTo(markerLayer));
     drawnAirports.push(a);
-    drawRunways(a);
+    drawRunways(a); // center copy only (only seen zoomed in)
     drawDetail(a);
     runBounds.extend([a.lat, a.lon]);
   }
@@ -192,16 +204,15 @@ const FlightMap = (function () {
   }
 
   function addTrack(feature, opacity) {
-    // Glow: a wide, faint underlay beneath a bright core line.
-    const glow = L.geoJSON(feature, {
-      style: { color: TRACK_COLOR, weight: 7, opacity: 0.18 * opacity },
+    WRAP.forEach((off) => {
+      const shift = { coordsToLatLng: (c) => L.latLng(c[1], c[0] + off) };
+      // Glow: a wide, faint underlay beneath a bright core line.
+      const glow = L.geoJSON(feature, { style: { color: TRACK_COLOR, weight: 7, opacity: 0.18 * opacity }, ...shift });
+      const core = L.geoJSON(feature, { style: { color: TRACK_COLOR, weight: 2, opacity: opacity }, ...shift });
+      trackLayer.addLayer(glow);
+      trackLayer.addLayer(core);
+      if (off === 0) runBounds.extend(core.getBounds());
     });
-    const core = L.geoJSON(feature, {
-      style: { color: TRACK_COLOR, weight: 2, opacity: opacity },
-    });
-    trackLayer.addLayer(glow);
-    trackLayer.addLayer(core);
-    runBounds.extend(core.getBounds());
   }
 
   /* Start a fresh run: wipe the map and reset accumulated bounds. */
@@ -303,11 +314,16 @@ const FlightMap = (function () {
         }
       } else {
         const op = routeOpacity(item.count);
-        L.polyline(ll, { color: TRACK_COLOR, weight: 7, opacity: 0.18 * op, interactive: false }).addTo(grp);
-        const core = L.polyline(ll, { color: TRACK_COLOR, interactive: true });
-        setBase(core, 2, op);
-        core.addTo(grp);
-        bind(core);
+        // Draw in ±360° copies for horizontal infinite scroll; only the center
+        // copy is interactive (hover/click) and tracked for highlight.
+        WRAP.forEach((off) => {
+          const llo = off ? ll.map((p) => [p[0], p[1] + off]) : ll;
+          L.polyline(llo, { color: TRACK_COLOR, weight: 7, opacity: 0.18 * op, interactive: false }).addTo(grp);
+          const core = L.polyline(llo, { color: TRACK_COLOR, interactive: off === 0 });
+          setBase(core, 2, op);
+          core.addTo(grp);
+          if (off === 0) bind(core);
+        });
       }
     });
     return { group: grp, visible };
@@ -470,6 +486,7 @@ const FlightMap = (function () {
   return {
     init, clear, beginRun, setRoutes, addFlights, refresh,
     showFlights, setColorScheme, selectFlight, replayFlight, stopReplay,
+    getMap: () => map,
   };
 })();
 

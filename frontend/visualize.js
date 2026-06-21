@@ -7,6 +7,8 @@ const Visualize = (function () {
   let selectedId = null;
   let scheme = "route";
   let speed = 1;
+  let fAirline = "";
+  let fYear = "";
   let replaying = false;
   let paused = false;
   let replayCtl = null;
@@ -27,16 +29,44 @@ const Visualize = (function () {
         feature: f,
         count: data.routes[key] || 1,
         props: p,
+        year: 2000 + (parseInt((p.date || "").split("/")[2], 10) || 0),
         sortKey: parseDate(p.date),
       };
     });
     items.sort((a, b) => b.sortKey - a.sortKey);
   }
 
+  function getVisible() {
+    return items.filter(
+      (it) => (!fAirline || it.props.airline === fAirline) && (!fYear || it.year === Number(fYear))
+    );
+  }
+
+  function populateFilters() {
+    const airlines = [...new Set(items.map((it) => it.props.airline))].filter(Boolean).sort();
+    const years = [...new Set(items.map((it) => it.year))].sort((a, b) => b - a);
+    $("filter-airline").innerHTML =
+      '<option value="">All airlines</option>' + airlines.map((a) => `<option value="${a}">${a}</option>`).join("");
+    $("filter-year").innerHTML =
+      '<option value="">All years</option>' + years.map((y) => `<option value="${y}">${y}</option>`).join("");
+  }
+
+  function applyFilter() {
+    const vis = getVisible();
+    if (selectedId && !vis.some((it) => it.id === selectedId)) {
+      selectedId = null;
+      stopReplay();
+      $("replay-btn").disabled = true;
+    }
+    renderList();
+    render();
+  }
+
   function renderList() {
     const list = $("flight-list");
     list.innerHTML = "";
-    items.forEach((it) => {
+    const vis = getVisible();
+    vis.forEach((it) => {
       const row = document.createElement("div");
       row.className = "fl-row";
       row.dataset.id = it.id;
@@ -47,7 +77,8 @@ const Visualize = (function () {
       row.addEventListener("click", () => select(it.id, false));
       list.appendChild(row);
     });
-    $("flight-count").textContent = `(${items.length})`;
+    const total = items.length;
+    $("flight-count").textContent = vis.length === total ? `(${total})` : `(${vis.length}/${total})`;
   }
 
   function select(id, fromMap) {
@@ -67,7 +98,7 @@ const Visualize = (function () {
 
   function render() {
     FlightMap.setRoutes(data.routes, data.route_max);
-    FlightMap.showFlights(items, data.airports, {
+    FlightMap.showFlights(getVisible(), data.airports, {
       colorBy: scheme,
       onSelect: (id) => select(id, true),
     });
@@ -124,6 +155,8 @@ const Visualize = (function () {
       })
     );
     $("replay-btn").addEventListener("click", onReplayClick);
+    $("filter-airline").addEventListener("change", (e) => { fAirline = e.target.value; applyFilter(); });
+    $("filter-year").addEventListener("change", (e) => { fYear = e.target.value; applyFilter(); });
   }
 
   let wired = false;
@@ -137,6 +170,7 @@ const Visualize = (function () {
           data = d;
           loaded = true;
           buildItems();
+          populateFilters();
           renderList();
           render();
         })

@@ -221,6 +221,14 @@ html, body {
     hsl(0,90%,55%), hsl(48,90%,55%), hsl(96,90%,55%), hsl(144,90%,55%), hsl(192,90%,55%), hsl(240,90%,55%));
 }
 
+/* Filters */
+.filter-row { display: flex; gap: 8px; margin: 12px 0 6px; }
+.filter-sel {
+  flex: 1; background: #0b1322; color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 7px 9px; font-size: 12.5px; cursor: pointer;
+}
+.filter-sel:focus { outline: none; border-color: var(--accent); }
+
 /* Flight list */
 .flight-list { overflow-y: auto; max-height: calc(100vh - 320px); border: 1px solid var(--border); border-radius: 8px; background: #0b1322; }
 .fl-row {
