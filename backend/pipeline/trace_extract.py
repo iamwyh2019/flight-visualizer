@@ -20,11 +20,15 @@ def decode_trace(raw: bytes) -> dict:
     return json.loads(raw)
 
 
+def _normalize_reg(reg: str) -> str:
+    """Upper-case and drop non-alphanumerics so 'G-EZUS' == 'GEZUS' (Flighty strips dashes)."""
+    return "".join(c for c in (reg or "").upper() if c.isalnum())
+
+
 def verify_registration(trace: dict, expected_reg: str, emit=None) -> bool:
-    """Check the trace's `r` field matches the expected registration. Warn on mismatch."""
+    """Check the trace's `r` matches the expected registration (dash/case-insensitive)."""
     actual = (trace.get("r") or "").strip().upper()
-    expected = (expected_reg or "").strip().upper()
-    ok = actual == expected
+    ok = _normalize_reg(actual) == _normalize_reg(expected_reg)
     if not ok and emit is not None:
-        emit("log", message=f"WARNING: trace r={actual!r} != expected {expected!r}")
+        emit("log", message=f"WARNING: trace r={actual!r} != expected {expected_reg!r}")
     return ok
