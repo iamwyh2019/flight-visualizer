@@ -7,22 +7,31 @@ CSV-derived display/filter fields. A single segment -> LineString; multiple
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from .csv_parser import Flight
 
 
-def build_feature(flight: Flight, segments: list[list[list[float]]]) -> dict:
+def build_feature(
+    flight: Flight,
+    segments: list[list[list[float]]],
+    takeoff_utc: datetime | None = None,
+    landing_utc: datetime | None = None,
+) -> dict:
     if len(segments) == 1:
         geometry = {"type": "LineString", "coordinates": segments[0]}
     else:
         geometry = {"type": "MultiLineString", "coordinates": segments}
 
+    # takeoff/landing are stored as UTC (offset-aware) so a plain landing-takeoff
+    # subtraction is a correct duration regardless of the airports' timezones.
     return {
         "type": "Feature",
         "geometry": geometry,
         "properties": {
             "date": flight.date,
-            "takeoff": flight.takeoff_actual.isoformat() if flight.takeoff_actual else None,
-            "landing": flight.landing_actual.isoformat() if flight.landing_actual else None,
+            "takeoff": takeoff_utc.isoformat() if takeoff_utc else None,
+            "landing": landing_utc.isoformat() if landing_utc else None,
             "airline": flight.airline,
             "flight": flight.flight,
             "aircraft_type": flight.aircraft_type,

@@ -107,7 +107,7 @@ def _slice_to_feature(p: _Plan, raw: bytes, cache_dir: str | Path, emit: EmitFn)
     segments = slice_clean.process(trace, p.start_utc, p.end_utc)
     if not segments:
         return None
-    feature = build_feature(p.flight, segments)
+    feature = build_feature(p.flight, segments, p.start_utc, p.end_utc)
     cache.save_feature(cache_dir, p.flight, feature)
     return feature
 

@@ -293,6 +293,18 @@ const FlightMap = (function () {
   function flatCoords(geom) {
     return geom.type === "LineString" ? geom.coordinates : geom.coordinates.flat();
   }
+  // Altitude (ft) sampled along the flight, with x as cumulative-distance fraction
+  // (0..1) — the same axis the replay scrubber/progress uses, so a chart cursor at
+  // `frac` lines up with the plane's position.
+  function altitudeProfile(feature) {
+    const pts = flatCoords(feature.geometry);
+    if (pts.length < 2) return null;
+    const ll = pts.map((c) => [c[1], c[0]]);
+    const dist = [0];
+    for (let i = 1; i < ll.length; i++) dist.push(dist[i - 1] + map.distance(ll[i - 1], ll[i]));
+    const total = dist[dist.length - 1] || 1;
+    return { x: dist.map((d) => d / total), alt: pts.map((c) => Math.max(0, c[2] || 0)) };
+  }
   function tooltipText(p) {
     const a = AIRLINES[p.airline] || {};
     const logo = a.logo ? `<img class="tip-logo" src="${a.logo}">` : "";
@@ -540,7 +552,7 @@ const FlightMap = (function () {
 
   return {
     init, clear, beginRun, setRoutes, addFlights, refresh,
-    showFlights, setColorScheme, selectFlight, replayFlight, stopReplay,
+    showFlights, setColorScheme, selectFlight, replayFlight, stopReplay, altitudeProfile,
     highlight: (id, on) => hoverFlight(id, on),
     getMap: () => map,
   };

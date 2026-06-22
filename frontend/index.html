@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Flight Visualizer — Data Fetcher</title>
+  <title>Flight Visualizer</title>
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -71,17 +71,20 @@
 
       <!-- Replay player (FlightRadar24-style), shown while a flight replays -->
       <div id="replay-player" class="replay-player hidden">
-        <button id="rp-play" class="rp-icon" title="Play / pause">⏸</button>
-        <span id="rp-cur" class="rp-cur">--:--</span>
-        <span id="rp-start" class="rp-time">--:--</span>
-        <div id="rp-track" class="rp-track"><div id="rp-fill" class="rp-fill"></div></div>
-        <span id="rp-end" class="rp-time">--:--</span>
-        <div class="seg" id="rp-speed">
-          <button class="seg-btn active" data-speed="1">1×</button>
-          <button class="seg-btn" data-speed="2">2×</button>
-          <button class="seg-btn" data-speed="4">4×</button>
+        <canvas id="rp-chart" class="rp-chart"></canvas>
+        <div class="rp-row">
+          <button id="rp-play" class="rp-icon" title="Play / pause">⏸</button>
+          <span id="rp-cur" class="rp-cur">--:--</span>
+          <span id="rp-start" class="rp-time">--:--</span>
+          <div id="rp-track" class="rp-track"><div id="rp-fill" class="rp-fill"></div></div>
+          <span id="rp-end" class="rp-time">--:--</span>
+          <div class="seg" id="rp-speed">
+            <button class="seg-btn active" data-speed="1">1×</button>
+            <button class="seg-btn" data-speed="2">2×</button>
+            <button class="seg-btn" data-speed="4">4×</button>
+          </div>
+          <button id="rp-close" class="rp-icon" title="Exit replay">✕</button>
         </div>
-        <button id="rp-close" class="rp-icon" title="Exit replay">✕</button>
       </div>
     </section>
   </main>

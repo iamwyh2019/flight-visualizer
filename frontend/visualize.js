@@ -132,14 +132,116 @@ const Visualize = (function () {
   // --- bottom replay player ---
   let t0 = 0, t1 = 0; // selected flight takeoff/landing (ms)
   const pad = (n) => String(n).padStart(2, "0");
-  const fmtISO = (s) => (s && s.includes("T") ? s.split("T")[1].slice(0, 5) : "--:--");
-  const fmtMs = (ms) => { const d = new Date(ms); return pad(d.getHours()) + ":" + pad(d.getMinutes()); };
+  // Flight time (elapsed duration), not wall-clock — avoids cross-timezone confusion.
+  const fmtDur = (ms) => {
+    const m = Math.max(0, Math.round(ms / 60000));
+    const h = Math.floor(m / 60);
+    return h ? h + "h " + pad(m % 60) + "m" : m + "m";
+  };
 
   function updateProgress(frac) {
     $("rp-fill").style.width = (frac * 100).toFixed(1) + "%";
-    $("rp-cur").textContent = t1 > t0 ? fmtMs(t0 + frac * (t1 - t0)) : fmtISO(null);
+    $("rp-cur").textContent = t1 > t0 ? fmtDur(frac * (t1 - t0)) : "--";
+    drawChart(frac);
   }
   function onReplayEnd() { paused = true; $("rp-play").textContent = "▶"; }
+
+  // --- altitude-vs-progress line chart (top of the player) ---
+  let chartProfile = null;
+  const fmtFt = (ft) => Math.round(ft).toLocaleString() + " ft";
+
+  function altAt(frac) {
+    const { x, alt } = chartProfile;
+    if (frac <= 0) return alt[0];
+    if (frac >= 1) return alt[alt.length - 1];
+    let i = 1;
+    while (i < x.length && x[i] < frac) i++;
+    const t = (frac - x[i - 1]) / ((x[i] - x[i - 1]) || 1);
+    return alt[i - 1] + (alt[i] - alt[i - 1]) * t;
+  }
+
+  function drawChart(frac) {
+    const cv = $("rp-chart");
+    if (!cv) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+      cv.width = Math.round(w * dpr);
+      cv.height = Math.round(h * dpr);
+    }
+    const ctx = cv.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    if (!chartProfile) return;
+
+    const padL = 4, padR = 4, padT = 14, padB = 4;
+    const plotW = w - padL - padR, plotH = h - padT - padB;
+    const peak = Math.max(1000, ...chartProfile.alt);
+    const maxAlt = Math.ceil(peak / 10000) * 10000; // nice round ceiling for ticks
+    const X = (t) => padL + t * plotW;
+    const Y = (a) => padT + plotH - (a / maxAlt) * plotH;
+
+    // Horizontal grid + altitude labels every 10k ft.
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.textBaseline = "bottom";
+    for (let a = 0; a <= maxAlt; a += 10000) {
+      const y = Y(a);
+      ctx.strokeStyle = "rgba(125, 211, 252, 0.12)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(padL + plotW, y);
+      ctx.stroke();
+      if (a > 0) {
+        ctx.fillStyle = "rgba(148, 163, 184, 0.7)";
+        ctx.fillText(a / 1000 + "k", padL + 2, y - 1);
+      }
+    }
+
+    // Altitude profile: filled area + bright line.
+    ctx.beginPath();
+    chartProfile.x.forEach((t, i) => {
+      const px = X(t), py = Y(chartProfile.alt[i]);
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    });
+    ctx.lineTo(X(1), Y(0));
+    ctx.lineTo(X(0), Y(0));
+    ctx.closePath();
+    ctx.fillStyle = "rgba(56, 189, 248, 0.14)";
+    ctx.fill();
+
+    ctx.beginPath();
+    chartProfile.x.forEach((t, i) => {
+      const px = X(t), py = Y(chartProfile.alt[i]);
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    });
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = "round";
+    ctx.stroke();
+
+    // Cursor at the current progress + a dot on the curve and an altitude readout.
+    const cx = X(Math.max(0, Math.min(1, frac)));
+    const cy = Y(altAt(frac));
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx, padT);
+    ctx.lineTo(cx, padT + plotH);
+    ctx.stroke();
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    const label = fmtFt(altAt(frac));
+    ctx.font = "11px ui-monospace, monospace";
+    ctx.textBaseline = "top";
+    const tw = ctx.measureText(label).width;
+    ctx.fillStyle = "#7dd3fc";
+    ctx.textAlign = "left";
+    ctx.fillText(label, Math.min(cx + 4, padL + plotW - tw), 1);
+  }
 
   function startReplay() {
     if (!selectedId) return;
@@ -148,11 +250,12 @@ const Visualize = (function () {
     const p = fl.props;
     t0 = p.takeoff ? Date.parse(p.takeoff) : 0;
     t1 = p.landing ? Date.parse(p.landing) : 0;
-    $("rp-start").textContent = fmtISO(p.takeoff);
-    $("rp-end").textContent = fmtISO(p.landing);
+    $("rp-start").textContent = "0m";
+    $("rp-end").textContent = t1 > t0 ? fmtDur(t1 - t0) : "--";
     $("rp-play").textContent = "⏸";
-    updateProgress(0);
+    chartProfile = FlightMap.altitudeProfile(fl.feature);
     $("replay-player").classList.remove("hidden");
+    updateProgress(0); // after un-hiding so the canvas has a measurable width
     replayCtl = FlightMap.replayFlight(fl.feature, { speed, onTick: updateProgress, onEnd: onReplayEnd });
     if (!replayCtl) { $("replay-player").classList.add("hidden"); return; }
     replaying = true;
@@ -172,6 +275,7 @@ const Visualize = (function () {
     replaying = false;
     paused = false;
     replayCtl = null;
+    chartProfile = null;
     $("replay-player").classList.add("hidden");
     replayIdleLabel();
   }
