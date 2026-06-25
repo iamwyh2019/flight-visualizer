@@ -432,6 +432,7 @@ const FlightMap = (function () {
   }
 
   function selectFlight(id) {
+    const isNew = id !== selectedId; // re-selecting (e.g. on color-scheme toggle) shouldn't re-zoom
     if (selectedId && flightLayers[selectedId]) {
       const prev = flightLayers[selectedId];
       prev.selected = false;
@@ -442,6 +443,12 @@ const FlightMap = (function () {
     if (fl) {
       fl.selected = true;
       fl.visible.forEach((ly) => styleFor(fl, ly, false));
+      if (isNew) {
+        // Frame the map to the selected flight (visible = center-copy layers only).
+        const b = L.latLngBounds([]);
+        fl.visible.forEach((ly) => b.extend(ly.getBounds()));
+        if (b.isValid()) map.fitBounds(b, { padding: [60, 60], maxZoom: 9 });
+      }
     }
   }
 
