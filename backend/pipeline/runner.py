@@ -25,7 +25,7 @@ from __future__ import annotations
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -155,7 +155,13 @@ def fetch_all_days(
     satisfied: set[str] = set()
     new_empty: set[str] = set()
 
-    # Split into already-cached vs needs-fetching (skipping known-empty flights).
+    # A flight's UTC day is "available" only once that day is over and adsb.lol has
+    # published its archive (next-day). Today's and future (scheduled) flights have
+    # no archive yet, so we skip them WITHOUT recording an empty miss — they'll be
+    # picked up on a later run once the day's archive exists.
+    today_utc = datetime.now(timezone.utc).date()
+
+    # Split into already-cached vs needs-fetching (skipping known-empty + not-yet-flown).
     cached_by_day: dict[date, list[dict]] = defaultdict(list)
     pending: list[_Plan] = []
     for p in plans:
@@ -163,6 +169,8 @@ def fetch_all_days(
         if feat is not None:
             cached_by_day[p.archive_day].append(_flight_entry(feat, p.dep, p.arr))
             satisfied.add(p.key)
+        elif p.archive_day >= today_utc:
+            emit("log", message=f"{p.flight.flight}: {p.archive_day.isoformat()} not yet flown / no archive — skipping")
         elif p.key in empty:
             emit("log", message=f"{p.flight.flight}: no data on record, skipping (cached miss)")
         else:

@@ -1,7 +1,7 @@
 """Tail number (registration) -> icao24 hex address.
 
 - US registrations (N-numbers): algorithmic, via `icao-nnumber-converter-us`.
-- B- registrations (mainland China / Taiwan / Hong Kong): skipped by configuration.
+- B- registrations: skipped by configuration.
 - Everything else (e.g. UK G-, etc.): resolved through the free adsbdb API and
   cached locally. Flighty strips the dash from registrations (e.g. "GEZUS"), so we
   try plausible dashed forms ("G-EZUS") until one resolves.
@@ -58,7 +58,7 @@ def reg_to_icao(tail_number: str, cache_dir: str | None = None) -> str:
         return icao.lower()
 
     if tail.startswith("B"):
-        raise NotImplementedError("B- registration (China/Taiwan/HK) skipped by configuration")
+        raise NotImplementedError("B- registration skipped by configuration")
 
     # Non-US, non-B: resolve via API, cached.
     reg_cache = _cache.load_reg_cache(cache_dir) if cache_dir else {}

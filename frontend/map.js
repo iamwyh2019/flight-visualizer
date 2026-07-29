@@ -16,6 +16,11 @@ const FlightMap = (function () {
     // map scrolls horizontally without end (paired with the ±360° copies below).
     map = L.map("map", {
       zoomControl: true, attributionControl: false, preferCanvas: true, worldCopyJump: true,
+      // Bound vertical panning to the world's edges (Web Mercator tops out near
+      // ±85°) while leaving longitude unbounded (±Infinity), so the map still
+      // scrolls east/west forever but can't drag up/down into gray void.
+      maxBounds: [[-85, -Infinity], [85, Infinity]],
+      maxBoundsViscosity: 1.0,
     }).setView([39.5, -98.35], 4); // US center
 
     // Borders drawn underneath everything as a faint wireframe: world country

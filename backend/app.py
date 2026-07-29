@@ -60,7 +60,9 @@ async def resume() -> dict:
     return {"ok": True}
 
 
-@app.get("/api/flights")
+# GET + HEAD: the frontend probes this with HEAD to detect a live backend
+# (present -> show the Fetch tab; 404 -> static deploy, hide it).
+@app.api_route("/api/flights", methods=["GET", "HEAD"])
 async def flights() -> dict:
     """Aggregate every cached per-flight GeoJSON into the Visualize payload (live)."""
     return collect.build_flights_payload(CACHE_DIR)
