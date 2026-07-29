@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from .cache import canon_date
 from .csv_parser import Flight
 
 
@@ -29,7 +30,7 @@ def build_feature(
         "type": "Feature",
         "geometry": geometry,
         "properties": {
-            "date": flight.date,
+            "date": canon_date(flight.date),  # ISO YYYY-MM-DD, format-stable
             "takeoff": takeoff_utc.isoformat() if takeoff_utc else None,
             "landing": landing_utc.isoformat() if landing_utc else None,
             "airline": flight.airline,

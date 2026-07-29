@@ -31,9 +31,17 @@ FLIGHTS = CACHE / "flights"
 
 
 def migrate_features() -> None:
-    renamed = same = 0
+    renamed = redated = same = 0
     for path in sorted(FLIGHTS.glob("*.geojson")):
-        p = json.loads(path.read_text(encoding="utf-8"))["properties"]
+        feature = json.loads(path.read_text(encoding="utf-8"))
+        p = feature["properties"]
+        # Normalize the stored display date to ISO in place (the frontend shows it
+        # verbatim, so mixed M/D/YY vs ISO would render inconsistently).
+        iso = cache.canon_date(p["date"])
+        if p["date"] != iso:
+            p["date"] = iso
+            path.write_text(json.dumps(feature), encoding="utf-8")
+            redated += 1
         new_key = cache._key(p["date"], p["from"], p["to"], p["flight"], p["tail_number"])
         target = FLIGHTS / f"{new_key}.geojson"
         if target == path:
@@ -41,7 +49,7 @@ def migrate_features() -> None:
             continue
         path.rename(target)  # POSIX rename overwrites; identical flight if it collides
         renamed += 1
-    print(f"features: {renamed} renamed, {same} already canonical")
+    print(f"features: {renamed} renamed, {redated} re-dated, {same} already canonical")
 
 
 def migrate_empty() -> None:

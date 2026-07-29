@@ -19,23 +19,34 @@ const Visualize = (function () {
 
   const $ = (id) => document.getElementById(id);
 
-  function parseDate(s) {
-    const [m, d, y] = (s || "").split("/").map(Number);
-    return new Date(2000 + (y || 0), (m || 1) - 1, d || 1).getTime();
+  // Normalize any source date to ISO YYYY-MM-DD. Data is ISO now, but older
+  // exports used "M/D/YY"; accept both so display and filtering stay consistent.
+  function isoDate(s) {
+    s = (s || "").trim();
+    let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (m) {
+      const y = m[3].length === 2 ? "20" + m[3] : m[3];
+      return `${y}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+    }
+    return s;
   }
 
   function buildItems() {
     items = data.flights.map((f) => {
       const p = f.properties;
       const key = [p.from, p.diverted_to || p.to].sort().join("|");
+      const date = isoDate(p.date);
       return {
-        id: [p.date, p.flight, p.tail_number].join("_"),
+        id: [date, p.flight, p.tail_number].join("_"),
         feature: f,
         count: data.routes[key] || 1,
         props: p,
-        year: 2000 + (parseInt((p.date || "").split("/")[2], 10) || 0),
+        date,
+        year: Number(date.slice(0, 4)),
         // Full takeoff timestamp when available so same-day flights order by time.
-        sortKey: p.takeoff ? Date.parse(p.takeoff) : parseDate(p.date),
+        sortKey: p.takeoff ? Date.parse(p.takeoff) : Date.parse(date),
       };
     });
     items.sort((a, b) => b.sortKey - a.sortKey); // reverse chronological
@@ -81,7 +92,7 @@ const Visualize = (function () {
         : `<span class="fl-logo ph"></span>`;
       row.innerHTML =
         logoHtml +
-        `<span class="fl-date">${it.props.date}</span>` +
+        `<span class="fl-date">${it.date}</span>` +
         `<span class="fl-num">${it.props.flight}</span>` +
         `<span class="fl-route">${it.props.from}→${it.props.diverted_to || it.props.to}</span>`;
       row.addEventListener("click", () => select(it.id, false));
@@ -101,7 +112,7 @@ const Visualize = (function () {
       r.classList.toggle("selected", r.dataset.id === id)
     );
     if (fromMap) {
-      // ids contain '/' (from the date) but no quotes, so a quoted attr selector is safe.
+      // ids have no quotes, so a quoted attribute selector is safe.
       const row = document.querySelector(`.fl-row[data-id="${id}"]`);
       if (row) row.scrollIntoView({ block: "nearest" });
     }
