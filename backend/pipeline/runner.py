@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import cache, github_archive, slice_clean, trace_extract
-from .airports import Airport, get_airport, local_to_utc
+from .airports import ALWAYS_SHOW_AIRPORTS, Airport, get_airport, local_to_utc
 from .csv_parser import Flight, parse_csv
 from .geojson_writer import build_feature
 from .reg_to_icao import reg_to_icao
@@ -147,7 +147,8 @@ def fetch_all_days(
         from . import assets
 
         assets.ensure_airlines(sorted({p.flight.airline for p in plans if p.flight.airline}), emit)
-        assets.ensure_airports(sorted({c for p in plans for c in (p.dep.iata, p.arr.iata)}), emit)
+        flown = {c for p in plans for c in (p.dep.iata, p.arr.iata)}
+        assets.ensure_airports(sorted(flown | set(ALWAYS_SHOW_AIRPORTS)), emit)
     except Exception as exc:  # never block the backfill on asset prefetch
         emit("log", message=f"Asset prefetch skipped: {exc}")
 

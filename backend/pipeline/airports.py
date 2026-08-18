@@ -17,6 +17,14 @@ import airportsdata
 # Loaded once at import; keyed by IATA code.
 _IATA = airportsdata.load("IATA")
 
+# Airports to always show on the map (dot + runways + diagram), even when no flight
+# in the log touches them — home/frequently-browsed fields. Consumed by the asset
+# prefetch (runner) and the Visualize payload (collect).
+ALWAYS_SHOW_AIRPORTS = [
+    "ATL", "BOS", "BUF", "BWI", "DCA", "DFW", "DTW", "IAD", "JFK", "LGA",
+    "MCO", "MKE", "MSP", "PHL", "PHX", "SFO", "SLC",
+]
+
 
 @dataclass
 class Airport:

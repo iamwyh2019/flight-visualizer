@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .airports import get_airport
+from .airports import ALWAYS_SHOW_AIRPORTS, get_airport
 
 
 def build_flights_payload(cache_dir: str | Path) -> dict:
@@ -35,6 +35,16 @@ def build_flights_payload(cache_dir: str | Path) -> dict:
         if dep and arr:
             key = "|".join(sorted([dep, arr]))
             route_counts[key] = route_counts.get(key, 0) + 1
+
+    # Always-shown airports (even if no flight touches them): plotted as normal
+    # dots, with their runways/diagram drawn on zoom like any other airport.
+    for code in ALWAYS_SHOW_AIRPORTS:
+        if code not in airports:
+            try:
+                a = get_airport(code)
+                airports[code] = {"lat": a.lat, "lon": a.lon, "name": a.name}
+            except KeyError:
+                pass
 
     return {
         "flights": features,
